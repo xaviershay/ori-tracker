@@ -1,6 +1,18 @@
 var Viewport = require('pixi-viewport')
 var PIXI = require('pixi.js')
+var firebase = require("firebase")
+var firestore = require("firebase/firestore")
 
+firebase.initializeApp({
+  apiKey: 'AIzaSyBPza7LIiAnw0XZcoh9qJTjDXmI9q2El2U',
+  authDomain: 'ori-tracker.firebaseapp.com',
+  projectId: 'ori-tracker'
+});
+
+// Initialize Cloud Firestore through Firebase
+var db = firebase.firestore();
+
+console.log(db)
 let type = "WebGL"
 if(!PIXI.utils.isWebGLSupported()){
   type = "canvas"
