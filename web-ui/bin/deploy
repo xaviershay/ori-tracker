@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec firebase deploy --only functions,hosting
