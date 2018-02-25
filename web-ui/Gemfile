@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+gem "firebase"
+gem "google-cloud-firestore"
