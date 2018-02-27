@@ -20,12 +20,12 @@ namespace OriTracker
 {
     public partial class Form1 : Form
     {
-		private OriMemory Memory { get; set; }
+        private OriMemory Memory { get; set; } = new OriMemory();
         private FirestoreDb db { get; set; }
         private PointF? lastPos;
 
-        private BufferBlock<TraceEvent> Buffer;
         private Metrics metrics = new Metrics();
+        private DataSender httpSender = new DataSender();
 
         class Metrics : INotifyPropertyChanged
         {
@@ -59,16 +59,12 @@ namespace OriTracker
 
             metrics.BufferSize = 3;
 
-            var options = new DataflowBlockOptions();
-            options.BoundedCapacity = 200; // TODO: Drop old events rather than block production of new events. Might need custom block type?
-            Buffer = new BufferBlock<TraceEvent>(options);
-
-            var consumer = SendToServer(Buffer);
-            var publisher = GenerateFakeTrace(Buffer);
+            //var publisher = GenerateFakeTrace(consumer);
 
             lblBufferSize.DataBindings.Add("Text", metrics, "BufferSize");
+
+            var oriTask = MonitorOriAsync();
             /*
-            Memory = new OriMemory();
 			Thread t = new Thread(UpdateLoop);
 			t.IsBackground = true;
 			t.Start();
@@ -79,8 +75,8 @@ namespace OriTracker
         {
             var x = 200.0;
             var y = -100.0;
-            var xvel = 0.1;
-            var yvel = 0.1;
+            var xvel = 1.0;
+            var yvel = 1.0;
 
             while (true)
             {
@@ -110,67 +106,31 @@ namespace OriTracker
                     Timestamp = Now()
                 };
                 target.Post(fakeTrace);
-                metrics.BufferSize = Buffer.Count;
             }
         }
 
-        async Task SendToServer(ISourceBlock<TraceEvent> source)
-        {
-            HttpClient client = new HttpClient();
-            client.BaseAddress = new Uri("https://us-central1-ori-tracker.cloudfunctions.net/");
-            //source.ReserveMessage
-            while (true)
-            {
-                await source.OutputAvailableAsync();
-                IList<TraceEvent> traces = new List<TraceEvent>();
-                Buffer.TryReceiveAll(out traces);
-
-                /*
-                var trace = await source.ReceiveAsync();
-                var traceID = string.Format("{0:0.}", trace.Timestamp);
-                var path = $"/track?board_id=abc123&player_id=xavier&x={trace.X}&y={trace.Y}&timestamp={traceID}";
-                Console.WriteLine(path);
-                await Task.Delay(500);
-                */
-                var serializerSettings = new JsonSerializerSettings();
-                serializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-                var path = "/track";
-                var json = JsonConvert.SerializeObject(traces, serializerSettings);
-                Console.WriteLine(json);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var result = await client.PostAsync(path, content);
-                if (result.IsSuccessStatusCode)
-                {
-
-                }
-                else
-                {
-                    Console.WriteLine("POST failed: {0} {1}", result.StatusCode, result.ReasonPhrase);
-                    // Put the messages back in the buffer
-                    foreach (var trace in traces)
-                    {
-                        Buffer.Post(trace);
-                    }
-                }
-                // TODO: Check result was success
-            }
-
-        }
-        private void UpdateLoop() {
+        async Task MonitorOriAsync() {
             bool lastHooked = false;
             while (true) {
-                bool hooked = false;
-                try {
-                    hooked = Memory.HookProcess();
-                } catch { }
+                await Task.Run(() =>
+                {
+                    bool hooked = false;
+                    try
+                    {
+                        hooked = Memory.HookProcess();
+                    }
+                    catch { }
 
-                if (hooked) {
-                    UpdateValues();
-                }
-                if (lastHooked != hooked) {
-                    lastHooked = hooked;
-                }
-                Thread.Sleep(200);
+                    if (hooked)
+                    {
+                        UpdateValues();
+                    }
+                    if (lastHooked != hooked)
+                    {
+                        lastHooked = hooked;
+                    }
+                });
+                await Task.Delay(200);
             }
         }
 
@@ -179,21 +139,42 @@ namespace OriTracker
             TimeSpan t = DateTime.UtcNow - new DateTime(1970, 1, 1);
             return t.TotalMilliseconds;
         }
+
+        public bool CheckInGame(GameState state)
+        {
+            return state != GameState.Logos && state != GameState.StartScreen && state != GameState.TitleScreen;
+        }
+        public bool CheckInGameWorld(GameState state)
+        {
+            return CheckInGame(state) && state != GameState.Prologue && !Memory.IsEnteringGame();
+        }
+
         public void UpdateValues()
         {
-            PointF pos = Memory.GetCameraTargetPosition();
-            if (!lastPos.HasValue || lastPos.Value != pos)
+            var state = Memory.GetGameState();
+            if (CheckInGameWorld(state))
             {
-                var trace = new TraceEvent
-                {
-                    X = pos.X,
-                    Y = pos.Y,
-                    Timestamp = Now()
-                };
+                PointF pos = Memory.GetCameraTargetPosition();
 
-                Console.WriteLine(Buffer.Post(trace));
+                // Only send events if position has changed since last time
+                if (!lastPos.HasValue || lastPos.Value != pos)
+                {
+                    var trace = new TraceEvent
+                    {
+                        X = pos.X,
+                        Y = pos.Y,
+                        Start = !lastPos.HasValue,
+                        Timestamp = Now()
+                    };
+
+                    httpSender.Post(trace);
+                }
+                lastPos = pos;
+            } else
+            {
+                // Reset last position when exited to menu
+                lastPos = null;
             }
-            lastPos = pos;
         }
     }
 }

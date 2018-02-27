@@ -1,5 +1,4 @@
 ﻿using System;
-using Google.Cloud.Firestore;
 using Newtonsoft.Json;
 
 namespace OriTracker
@@ -24,17 +23,17 @@ namespace OriTracker
         }
     }
 
-    [FirestoreData]
     public class TraceEvent
     {
-        [FirestoreProperty]
         public double X { get; set; }
 
-        [FirestoreProperty]
         public double Y { get; set; }
 
         [JsonConverter(typeof(StringTimestampConverter))]
         public double Timestamp { get; set; }
+
+        // Whether this is the beginning of a new line (say, we just entered from menu)
+        public bool Start { get; internal set; }
     }
 
 }
