@@ -20,7 +20,8 @@ exports.track = functions.https.onRequest((req, response) => {
     var id = x.timestamp
     var doc = {
       x: x.x,
-      y: x.y
+      y: x.y,
+      start: x.start
     }
 
     var path = "boards/" + board + "/players/" + player + "/traces/" + id
