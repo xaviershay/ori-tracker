@@ -72,6 +72,9 @@ function toMapCoord(gameCoords) {
   return point(mapx, mapy)
 }
 
+function distance(a, b) {
+  return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2)
+}
 
 function setup() {
   let mapTexture = PIXI.loader.resources["images/ori-map.jpg"].texture
@@ -109,18 +112,26 @@ function setup() {
   db
     .collection('boards/abc123/players/xavier/traces')
     .onSnapshot(function(snapshot) {
+      var maxContinuous = 50; // TODO: Figure out what makes sense here
       traces = {}
       trace.clear()
       trace.lineStyle(2, 0xff0000);
+      var lastPos = null;
       snapshot.forEach(function(doc) {
         var data = doc.data();
         var x = toMapCoord(data)
-        if (Object.keys(traces).length == 0) {
+        if (lastPos == null || data.start) {
           trace.moveTo(x.x, x.y)
         } else {
+          if (distance(lastPos, x) > maxContinuous) {
+            trace.lineStyle(2, 0x00ff00, 0.5);
+          } else {
+            trace.lineStyle(2, 0xff0000, 0.8);
+          }
           trace.lineTo(x.x, x.y)
         }
         traces[doc.id] = data
+        lastPos = x
       })
     })
 }
