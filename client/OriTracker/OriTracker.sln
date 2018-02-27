@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26228.9
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OriTracker", "OriTracker\OriTracker.csproj", "{3619D50F-9C38-43E7-9F70-503ACDF96F7C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OriTrackerPrototype", "OriTrackerPrototype\OriTrackerPrototype.csproj", "{3619D50F-9C38-43E7-9F70-503ACDF96F7C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
