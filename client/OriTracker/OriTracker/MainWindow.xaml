@@ -1,0 +1,71 @@
+﻿<Window x:Class="OriTracker.MainWindow"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:OriTracker"
+        mc:Ignorable="d"
+        Title="Ori Tracker" Height="231.894" Width="409.701" SizeChanged="Window_SizeChanged" Icon="ori_logo.png">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <materialDesign:ColorZone Mode="PrimaryDark" Grid.Row="0">
+        <!--<materialDesign:ColorZone Mode="Accent" Grid.Row="0">-->
+            <Label Content="ORI DETECTED" VerticalAlignment="Top" HorizontalContentAlignment="Center"/>
+        </materialDesign:ColorZone>
+
+        <Grid Margin="8 8 8 8" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition />
+                <RowDefinition />
+            </Grid.RowDefinitions>
+            <Label Grid.Column="0" Grid.Row="0" Margin="0 0 8 0">Board URL</Label>
+            <TextBox Grid.Column="1" Grid.Row="0">https://ori-tracker.firebaseapp.com/board/a7KwE</TextBox>
+            <Label Grid.Column="0" Grid.Row="1" Margin="0 0 8 0">My ID</Label>
+            <TextBox Grid.Column="1" Grid.Row="1">xavier</TextBox>
+            <Label Grid.Column="0" Grid.Row="2" Margin="0 0 8 0">Enabled</Label>
+            <ToggleButton Grid.Column="1" Grid.Row="2" HorizontalAlignment="Right" Name="chkEnabled" IsChecked="True" />
+        </Grid>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Label Grid.Column="0" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource PrimaryHueLightBrush}">
+                20
+            </Label>
+            <Canvas Grid.Column="1" Name="MetricsGraph" ClipToBounds="True" Margin="8 0 8 0" HorizontalAlignment="Stretch">
+                <Canvas.LayoutTransform>
+                    <ScaleTransform ScaleX="1" ScaleY="-1" CenterX=".5" CenterY=".5" />
+                </Canvas.LayoutTransform>
+            </Canvas>
+            <Label Grid.Column="2" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource SecondaryAccentBrush}">
+                200ms
+            </Label>
+        </Grid>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center">
+            <Label Foreground="{DynamicResource PrimaryHueLightBrush}" FontSize="{StaticResource GraphLegendFontSize}">Queue Size</Label>
+            <Label Foreground="{DynamicResource SecondaryAccentBrush}" FontSize="{StaticResource GraphLegendFontSize}">Latency</Label>
+        </StackPanel>
+    </Grid>
+</Window>
+    
