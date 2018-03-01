@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OriTrackerPrototype", "OriT
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OriTracker", "OriTracker\OriTracker.csproj", "{C24EC249-D8B0-4BB1-8E7A-9E8A3DA1BB12}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapStitcher", "..\..\MapStitcher\MapStitcher\MapStitcher.csproj", "{1FF6F079-2A88-4DEC-8E57-271FD97692FB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{C24EC249-D8B0-4BB1-8E7A-9E8A3DA1BB12}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C24EC249-D8B0-4BB1-8E7A-9E8A3DA1BB12}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C24EC249-D8B0-4BB1-8E7A-9E8A3DA1BB12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FF6F079-2A88-4DEC-8E57-271FD97692FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FF6F079-2A88-4DEC-8E57-271FD97692FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FF6F079-2A88-4DEC-8E57-271FD97692FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FF6F079-2A88-4DEC-8E57-271FD97692FB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
