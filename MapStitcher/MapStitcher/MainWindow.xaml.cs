@@ -1,13 +1,16 @@
 ﻿using ImageMagick;
 using PersistentObjectCachenet45;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -20,11 +23,130 @@ using System.Windows.Shapes;
 
 namespace MapStitcher
 {
+    public class JoinPoint
+    {
+        public Point Source;
+        public Point Target;
+    }
+
+    public class JoinData
+    {
+        public string Source;
+        public string Target;
+        public JoinPoint Join; // If null, no join was found between the two
+    }
+
+    public class NeedleKey
+    {
+        public string Key;
+        public Gravity Gravity;
+    }
+
+    public class State
+    {
+        public ConcurrentDictionary<string, IMagickImage> sources;
+        public ConcurrentDictionary<NeedleKey, Point?> needles;
+        public ConcurrentDictionary<string, JoinData> joins;
+
+        public IMagickImage Image(string key)
+        {
+            return sources.GetOrAdd(key, (x) => new MagickImage(x));
+        }
+    }
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
     public partial class MainWindow : Window
     {
+        public async void DoNetwork()
+        {
+            var state = await cache("state", () => new State());
+
+            var sourceDir = "C:/Users/Xavier/Source/ori-tracker/MapStitcher/Screenshots";
+
+            MagickImage image1 = new MagickImage($"{sourceDir}/sorrow-1.png");
+            MagickImage image2 = new MagickImage($"{sourceDir}/sorrow-2.png");
+
+            var sourceFiles = new List<string>
+            {
+                $"{sourceDir}/sorrow-1.png",
+                $"{sourceDir}/sorrow-2.png",
+            };
+
+            var loadFromDiskBlock = new TransformBlock<string, string>(path =>
+            {
+                state.Image(path);
+                return path;
+            });
+
+            var cropImagesBlock = new TransformBlock<string, string>(path =>
+            {
+                // TODO: This is destructive, so that's probably bad in concurrent world?
+                var image = state.Image(path);
+                var bounds = new MagickGeometry(0, 370, image.Width, image.Height - 250 - 370);
+                image.Crop(bounds);
+                image.RePage();
+                return path;
+            });
+
+            var allGravities = new List<Gravity>()
+            {
+                Gravity.North,
+                Gravity.East,
+                Gravity.South,
+                Gravity.West
+            };
+
+            var gravities = new TransformManyBlock<string, NeedleKey>(path =>
+            {
+                return allGravities.Select(g => new NeedleKey() { Key = path, Gravity = g });
+            });
+
+            var findNeedleBlock = new TransformBlock<NeedleKey, NeedleKey>(key =>
+            {
+                state.needles.GetOrAdd(key, (k) =>
+                {
+                    return FindHighEntropyStrip(state.Image(k.Key));
+                });
+                return key;
+            });
+
+            var findJoinBlock = new TransformBlock<Tuple<string, NeedleKey>, string>(t =>
+            {
+                state.joins.GetOrAdd(t.Item1, (k1) =>
+                {
+                    return new JoinData()
+                    {
+                        Source = k1,
+                        Target = t.Item2.Key,
+                        Join = null
+                    };
+                });
+                return t.Item1; // TODO: Figure out best thing to propagate. Maybe when match found?
+            });
+
+            var broadcaster = new BroadcastBlock<string>(null);
+            var cartesian = new CartesianProductBlock<string, NeedleKey>();
+
+            var headBlock = loadFromDiskBlock;
+            headBlock.LinkTo(cropImagesBlock);
+            cropImagesBlock.LinkTo(broadcaster);
+            broadcaster.LinkTo(gravities);
+            broadcaster.LinkTo(cartesian.Left);
+            gravities.LinkTo(findNeedleBlock);
+            findNeedleBlock.LinkTo(cartesian.Right);
+            cartesian.LinkTo(findJoinBlock);
+
+            //cropImagesBlock.LinkTo(findNeedleBlock);
+
+            foreach (var file in sourceFiles)
+            {
+                headBlock.Post(file);
+            }
+            headBlock.Complete();
+            findNeedleBlock.Completion.Wait();
+        }
 
         public MainWindow()
         {
@@ -265,7 +387,7 @@ canvas.Composite(image2, 2000, 1000);
             return null;
         }
 
-        private Point? FindHighEntropyStrip(MagickImage image2)
+        private Point? FindHighEntropyStrip(IMagickImage image2)
         {
             var d = 50;
             var image = image2;
