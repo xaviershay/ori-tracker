@@ -24,8 +24,7 @@ namespace Tests
             block.Post("b");
             block.Complete();
 
-            block.Receive();
-            block.Receive();
+            await Drain(block);
 
             try
             {
