@@ -1,4 +1,5 @@
 ﻿using ImageMagick;
+using Newtonsoft.Json;
 using PersistentObjectCachenet45;
 using System;
 using System.Collections.Concurrent;
@@ -23,24 +24,20 @@ using System.Windows.Shapes;
 
 namespace MapStitcher
 {
-    public class JoinData
+    public struct JoinData
     {
         public string Source;
         public string Target;
         public Point? Join; // If null, no join was found between the two
     }
 
-    public class NeedleKey
-    {
-        public string Key;
-        public Gravity Gravity;
-    }
-
     public class State
     {
+        [JsonIgnore]
         public ConcurrentDictionary<string, IMagickImage> sources = new ConcurrentDictionary<string, IMagickImage>();
+
         public ConcurrentDictionary<NeedleKey, Point?> needles = new ConcurrentDictionary<NeedleKey, Point?>();
-        public ConcurrentDictionary<string, JoinData> joins = new ConcurrentDictionary<string, JoinData>();
+        public ConcurrentDictionary<string, JoinData?> joins = new ConcurrentDictionary<string, JoinData?>();
 
         public IMagickImage Image(string key)
         {
@@ -55,9 +52,29 @@ namespace MapStitcher
     {
         public async Task DoNetwork()
         {
-            var state = await cache("state2", () => new State());
+            var cacheFile = System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/stitch_cache.json";
+
+            State state = new State();
+            try
+            {
+                state = JsonConvert.DeserializeObject<State>(File.ReadAllText(cacheFile));
+                Console.WriteLine($"Using state from {cacheFile}");
+            } catch
+            {
+                Console.WriteLine("Couldn't load cache");
+            }
+            //state = new State();
+
+            Console.WriteLine(JsonConvert.SerializeObject(state));
             //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount - 1, 1));
             var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
+            var snapshotState = new ActionBlock<State>((s) =>
+            {
+                File.WriteAllText(cacheFile, JsonConvert.SerializeObject(s));
+            }, new ExecutionDataflowBlockOptions
+            {
+                MaxDegreeOfParallelism = 1
+            });
             var blockOptions = new ExecutionDataflowBlockOptions
             {
                 TaskScheduler = workerPool,
@@ -95,10 +112,10 @@ namespace MapStitcher
 
             var allGravities = new List<Gravity>()
             {
-                Gravity.North,
+                Gravity.North /*,
                 Gravity.East,
                 Gravity.South,
-                Gravity.West
+                Gravity.West */
             };
 
             var gravities = new TransformManyBlock<string, NeedleKey>(path =>
@@ -108,19 +125,30 @@ namespace MapStitcher
 
             var findNeedleBlock = new TransformBlock<NeedleKey, NeedleKey>(key =>
             {
-                Console.WriteLine("Finding needle: {0} {1}", key.Key, key.Gravity);
+                Console.WriteLine("Finding needle: {0}", key);
                 state.needles.GetOrAdd(key, (k) =>
                 {
                     return FindHighEntropyStrip(state.Image(k.Key), key.Gravity);
                 });
-                Console.WriteLine("Found needle: {0} {1}", key.Key, key.Gravity);
+                snapshotState.Post(state);
+                Console.WriteLine("Found needle: {0}", key);
                 return key;
             }, blockOptions);
 
             var findJoinBlock = new TransformBlock<Tuple<string, NeedleKey>, string>(t =>
             {
-                Console.WriteLine("Finding join: {0} {1}", t.Item1, t.Item2.Key);
-                state.joins.GetOrAdd(t.Item1, (k1) =>
+                if (t.Item1 == t.Item2.Key)
+                {
+                    Console.WriteLine("Dropping self-join for {0}", t.Item1);
+                    return t.Item1; // TODO: This doesn't mean anything
+                }
+                if (t.Item2.ToString() != "sorrow-2.png|North")
+                {
+                    Console.WriteLine("Skipping");
+                    return t.Item1;
+                }
+                Console.WriteLine("Finding join: {0} {1}", System.IO.Path.GetFileName(t.Item1), t.Item2);
+                var ret = state.joins.GetOrAdd(t.Item1, (k1) =>
                 {
                     var needle = t.Item2;
                     Point? potentialAnchor = null;
@@ -128,17 +156,22 @@ namespace MapStitcher
 
                     if (!potentialAnchor.HasValue)
                     {
-                        throw new InvalidOperationException($"no needle found for {needle}");
+                        Console.WriteLine("No needle exists for {0}, so no join possible", needle);
+                        return null;
                     }
                     var anchor = potentialAnchor.Value;
 
                     var needleImage = state.Image(t.Item2.Key).Clone();
-                    int NeedleSize = 50; // TODO: Move this needle image cropping back into FindNeedle Task
+                    int NeedleSize = 150; // TODO: Move this needle image cropping back into FindNeedle Task
                     needleImage.Crop((int)anchor.X, (int)anchor.Y, NeedleSize, 1);
 
-                    // TODO: Use gravity to speed up
-                    var joinPoint = FindAnchorInImage(state.Image(t.Item2.Key), state.Image(k1));
-                    Console.WriteLine("Found join: {0} {1} {2}", t.Item1, t.Item2.Key, joinPoint);
+                    var needleViewImage = state.Image(t.Item2.Key).Clone();
+                    needleViewImage.Crop((int)anchor.X, (int)anchor.Y-50, NeedleSize, 100);
+
+                    DisplayImage(Viewer, state.Image(t.Item1));
+                    DisplayImage(Viewer2, needleViewImage);
+
+                    var joinPoint = FindAnchorInImage(needleImage, t.Item2.Gravity, state.Image(k1));
 
                     return new JoinData()
                     {
@@ -147,6 +180,8 @@ namespace MapStitcher
                         Join = joinPoint
                     };
                 });
+                Console.WriteLine("Found join: {0} {1} {2}", System.IO.Path.GetFileName(t.Item1), System.IO.Path.GetFileName(t.Item2.Key), ret);
+                snapshotState.Post(state);
                 return t.Item1; // TODO: Figure out best thing to propagate. Maybe when match found?
             }, blockOptions);
 
@@ -162,10 +197,13 @@ namespace MapStitcher
 
             // Don't propagate completion from left/right sources for cartesian join. It should
             // complete when _both_ are done (which is it's default behaviour)
-            broadcaster.LinkTo(cartesian.Left);
-            findNeedleBlock.LinkTo(cartesian.Right);
+            broadcaster.LinkTo(cartesian.Left, propagate);
+            findNeedleBlock.LinkTo(cartesian.Right, propagate);
 
             cartesian.LinkTo(findJoinBlock, propagate);
+
+            var sink = new ActionBlock<string>(s => { });
+            findJoinBlock.LinkTo(sink, propagate);
 
             foreach (var file in sourceFiles)
             {
@@ -173,7 +211,35 @@ namespace MapStitcher
             }
             headBlock.Complete();
 
-            await findJoinBlock.Completion.ContinueWith(_ => Console.WriteLine("Pipeline Finished"));
+            await sink.Completion.ContinueWith(async _ => {
+                snapshotState.Complete();
+                await snapshotState.Completion;
+                Console.WriteLine("Pipeline Finished");
+            });
+        }
+
+        private void DisplayImage(Image viewer, IMagickImage image)
+        {
+            using (var stream = new MemoryStream())
+            {
+                BitmapImage bitmapImage = new BitmapImage();
+
+                image.Write(stream);
+
+                bitmapImage.BeginInit();
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.StreamSource = stream;
+                bitmapImage.EndInit();
+
+                // Needed to be able to use object on UI thread
+                // https://stackoverflow.com/a/33917169/379639
+                bitmapImage.Freeze();
+
+                this.Dispatcher.Invoke(() =>
+                {
+                    viewer.Source = bitmapImage;
+                });
+            }
         }
 
         public MainWindow()
@@ -245,7 +311,7 @@ namespace MapStitcher
             Point? potentialJoinPoint = null;
 
 
-            potentialJoinPoint = await cache(keyForImage("join", image1, needle), () => FindAnchorInImage(needle, image1));
+            potentialJoinPoint = await cache(keyForImage("join", image1, needle), () => FindAnchorInImage(needle, Gravity.North, image1));
 
             //potentialJoinPoint = new Point(923, 1236);
             Console.WriteLine(potentialJoinPoint);
@@ -386,44 +452,111 @@ canvas.Composite(image2, 2000, 1000);
             }
         }
 
-        private Point? FindAnchorInImage(IMagickImage needleImage, IMagickImage haystack)
+        private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack)
         {
             // Search in bottom strip for anchor
             var d = 50;
             var pixels = haystack.GetPixels();
             var needle = needleImage.GetPixels().Select(i => i.ToColor()).ToList();
+            var searchArea = SearchArea(haystack, Opposite(needleGravity));
+            var rows = searchArea.Item1;
+            var columns = searchArea.Item2;
 
-            for (var y = haystack.Height - 1; y >= 0; y--)
+            this.Dispatcher.Invoke(() =>
             {
-                List<MagickColor> pixelStrip = Enumerable.Range(0, haystack.Width).Select(i => pixels.GetPixel(i, y).ToColor()).ToList();
-                for (var x = 0; x < haystack.Width - needle.Count; x++)
+                Progress.Value = 0;
+            });
+
+            foreach (var y in rows)
+            {
+                List<MagickColor> pixelStrip = columns.Select(i => pixels.GetPixel(i, y).ToColor()).ToList();
+                foreach (var x in columns)
                 {
-                    var target = Enumerable.Range(x, needle.Count).Select(i => pixelStrip.ElementAt(i));
+                    if (x + needle.Count >= haystack.Width)
+                    {
+                        continue;
+                    }
+                    var target = Enumerable.Range(x - columns.First(), needle.Count).Select(i => pixelStrip.ElementAt(i));
 
                     var result = needle.Zip(target, (first, second) => Tuple.Create(first, second)).All(t =>
                     {
-                        return t.Item1.FuzzyEquals(t.Item2, new Percentage(10));
+                        return t.Item1.FuzzyEquals(t.Item2, new Percentage(15));
                     });
+
+                    /*
+                    var resultCandidate = needle.Zip(target, (first, second) => Tuple.Create(first, second)).All(t =>
+                    {
+                        return t.Item1.FuzzyEquals(t.Item2, new Percentage(15));
+                    });
+                    */
 
                     if (result)
                     {
                         var ret = new Point(x, y);
+                        var temp = haystack.Clone();
+                        temp.Crop(x, y - 50, 100, 100);
+                        DisplayImage(Viewer, temp);
                         Console.WriteLine($"FOUND MATCH: ({x}, {y})");
                         return ret;
                     }
                 }
+                this.Dispatcher.Invoke(() =>
+                {
+                    Progress.Value = Math.Abs((double)(y - Math.Min(rows.Last(), rows.First())) / (double)(rows.Last() - rows.First()) * 100);
+                });
             }
             return null;
         }
 
+        private Gravity Opposite(Gravity gravity)
+        {
+            switch (gravity)
+            {
+                case Gravity.North: return Gravity.South;
+                case Gravity.South: return Gravity.North;
+                case Gravity.East: return Gravity.West;
+                case Gravity.West: return Gravity.East;
+                default: throw new ArgumentException($"Unhandled gravity: {gravity}");
+            }
+        }
+
         public IEnumerable<int> FromTo(int from, int to)
         {
-            return Enumerable.Range(from, to - from - 1);
+            return Enumerable.Range(from, to - from);
+        }
+
+        private Tuple<IEnumerable<int>, IEnumerable<int>> SearchArea(IMagickImage image, Gravity gravity)
+        {
+            switch (gravity)
+            {
+                case Gravity.South:
+                    return Tuple.Create(
+                      FromTo(image.Height - image.Height / 3, image.Height).Reverse(),
+                      FromTo(0, image.Width)
+                    );
+                case Gravity.North:
+                    return Tuple.Create(
+                        FromTo(0, image.Height / 3),
+                        FromTo(0, image.Width)
+                    );
+                case Gravity.East:
+                    return Tuple.Create(
+                        FromTo(0, image.Height),
+                        FromTo(image.Width - image.Width / 3, image.Width).Reverse()
+                    );
+                case Gravity.West:
+                    return Tuple.Create(
+                        FromTo(0, image.Height),
+                        FromTo(0, image.Width - image.Width / 3)
+                    );
+                default:
+                    throw new ArgumentException($"Unhandled gravity: {gravity}");
+            }
         }
 
         private Point? FindHighEntropyStrip(IMagickImage image, Gravity gravity)
         {
-            var NeedleSize = 50;
+            var NeedleSize = 150;
             var pixels = image.GetPixels();
 
             var t1 = DateTime.UtcNow;
@@ -434,38 +567,21 @@ canvas.Composite(image2, 2000, 1000);
             Debug.Assert(image.Height > 1 && image.Width > 1, "Assumes non-empty image");
             Debug.Assert(image.Width >= NeedleSize, "Assumes image is at least as big as needle size");
 
-            // TODO: Make search radiate out from center
-            switch (gravity)
-            {
-                case Gravity.South:
-                    rows = FromTo(image.Height - image.Height / 3, image.Height).Reverse();
-                    columns = FromTo(0, image.Width - NeedleSize);
-                    break;
-                case Gravity.North:
-                    rows = FromTo(0, image.Height / 3);
-                    columns = FromTo(0, image.Width - NeedleSize);
-                    break;
-                case Gravity.East:
-                    rows = FromTo(0, image.Height);
-                    columns = FromTo(image.Width - image.Width / 3, image.Width - NeedleSize).Reverse();
-                    break;
-                case Gravity.West:
-                    rows = FromTo(0, image.Height);
-                    columns = FromTo(0, image.Width - image.Width / 3 - NeedleSize);
-                    break;
-
-            }
-            Console.WriteLine("{0}x{1}", image.Width, image.Height);
-            Console.WriteLine("rows: {0},{1}", rows.Min(), rows.Max());
-            Console.WriteLine("columns: {0},{1}", columns.Min(), columns.Max());
+            var searchArea = SearchArea(image, gravity);
+            rows = searchArea.Item1;
+            columns = searchArea.Item2;
 
             foreach (var y in rows)
             {
-                List<float> pixelStrip = FromTo(columns.Min(), columns.Max() + NeedleSize + 1+ 2).Select(i => pixels.GetPixel(i, y).ToColor().ToColor().GetBrightness()).ToList();
+                List<float> pixelStrip = FromTo(columns.Min(), columns.Max()).Select(i => pixels.GetPixel(i, y).ToColor().ToColor().GetBrightness()).ToList();
 
                 foreach (var x in columns)
                 {
-                    //Console.WriteLine(x);
+                    if (x + NeedleSize >= image.Width)
+                    {
+                        continue;
+                    }
+
                     var brightness = Enumerable.Range(x - columns.Min(), NeedleSize).Select(i => pixelStrip.ElementAt(i));
 
                     var avg = brightness.Average();

@@ -40,8 +40,9 @@ namespace MapStitcher
                 }
             });
 
-
-            Task.WhenAll(Left.Completion, Right.Completion).ContinueWith(_ => { completion.SetResult(VoidResult.Instance); });
+            Task.WhenAll(Left.Completion, Right.Completion).ContinueWith(_ => {
+                completion.SetResult(VoidResult.Instance);
+            });
         }
 
         private TaskCompletionSource<VoidResult> completion = new TaskCompletionSource<VoidResult>();
