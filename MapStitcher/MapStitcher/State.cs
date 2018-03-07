@@ -2,14 +2,32 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks.Dataflow;
 using System.Windows;
+using System.Linq;
+using System.IO;
 
 namespace MapStitcher
 {
     public class State
     {
+        public struct Join
+        {
+            public string Image1;
+            public string Image2;
+            public Point JoinPoint;
+
+            public override string ToString()
+            {
+                return $"{Path.GetFileName(Image1)}/{Path.GetFileName(Image2)}: {JoinPoint}";
+            }
+        }
+
+        [JsonRequired]
         private ConcurrentDictionary<NeedleKey, Point?> needles;
+
+        [JsonRequired]
         private ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>> joins;
 
         [JsonIgnore]
@@ -20,6 +38,23 @@ namespace MapStitcher
 
         [JsonIgnore]
         public ITargetBlock<State> ChangeListener;
+
+        public IEnumerable<Join> Joins
+        {
+            get
+            {
+                return joins.SelectMany(x => x.Value.SelectMany(y =>
+                {
+                    if (y.Value.HasValue && x.Key.CompareTo(y.Key) <= 0)
+                    {
+                        return Enumerable.Repeat(new Join() { Image1 = x.Key, Image2 = y.Key, JoinPoint = y.Value.Value }, 1);
+                    } else
+                    {
+                        return Enumerable.Empty<Join>();
+                    }
+                }));
+            }
+        }
 
         public State()
         {

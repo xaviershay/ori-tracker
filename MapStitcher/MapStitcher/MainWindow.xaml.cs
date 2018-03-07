@@ -128,11 +128,13 @@ namespace MapStitcher
                     Console.WriteLine("Dropping self-join for {0}", haystack);
                     return haystack; // TODO: This doesn't mean anything
                 }
+                /*
                 if (needle.ToString() != "sorrow-2.png|North")
                 {
                     Console.WriteLine("Skipping");
                     return haystack;
                 }
+                */
 
                 if (!state.JoinExists(haystack, needle.Key))
                 {
@@ -195,6 +197,32 @@ namespace MapStitcher
                 snapshotState.Complete();
                 await snapshotState.Completion;
                 Console.WriteLine("Pipeline Finished");
+                var joins = state.Joins.GroupBy(k => k.Image1).ToDictionary(k => k.Key, v => v.ToList());
+                var seed = joins.First().Key;
+                var candidates = new Queue<string>();
+                candidates.Enqueue(seed);
+
+                while (candidates.Count > 0)
+                {
+                    var current = candidates.Dequeue();
+                    List<State.Join> localJoins = null;
+                    joins.TryGetValue(current, out localJoins);
+                    //joins.Remove(seed);
+                    // TODO: Can replace with ILookup?
+
+                    if (localJoins != null)
+                    {
+                        foreach (var localJoin in localJoins)
+                        {
+                            candidates.Enqueue(localJoin.Image2);
+                            Console.WriteLine("Joining {0}", localJoin);
+                        }
+                    }
+                }
+                // Put joins into a bag
+                // Choose seed image
+                // Find all connected images, expand extent ... store offsets somehow?
+                // Add all connected images to bag, BFS through them
             });
         }
 
@@ -557,7 +585,7 @@ canvas.Composite(image2, 2000, 1000);
 
                 foreach (var x in columns)
                 {
-                    if (x + NeedleSize >= image.Width)
+                    if (x + NeedleSize >= pixelStrip.Count)
                     {
                         continue;
                     }
