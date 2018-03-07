@@ -9,12 +9,20 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="auto"/>
+        </Grid.RowDefinitions>
+        <Image Grid.Row="0" Name="Viewer" />
+        <ListView Grid.Row="1" Name="SourceImages" SelectionChanged="SourceImages_SelectionChanged" SelectionMode="Single"></ListView>
+    <!--
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         <Image Grid.Row="0" x:Name="Viewer" Margin="8 8 8 8" MouseMove="Viewer_MouseMove" />
         <Image Grid.Row="1" x:Name="Viewer2" Margin="8 8 8 8" />
         <ProgressBar x:Name="Progress" HorizontalAlignment="Stretch" Height="10" Grid.Row="2" VerticalAlignment="Top"/>
+        -->
     </Grid>
 
 </Window>

@@ -30,6 +30,15 @@ namespace MapStitcher
     /// </summary>
     public partial class MainWindow : Window
     {
+        public State AppState { get; private set; }
+        private List<Gravity> allGravities = new List<Gravity>()
+        {
+            Gravity.North,
+            Gravity.East,
+            Gravity.South,
+            Gravity.West
+        };
+
         public async Task DoNetwork()
         {
             var cacheFile = System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/stitch_cache.json";
@@ -44,6 +53,7 @@ namespace MapStitcher
                 Console.WriteLine("Couldn't load cache");
             }
             //state = new State();
+            AppState = state;
 
             //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount - 1, 1));
             var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
@@ -71,11 +81,20 @@ namespace MapStitcher
             MagickImage image2 = new MagickImage($"{sourceDir}/sorrow-2.png");
             */
 
+            /*
             var sourceFiles = new List<string>
             {
                 $"{sourceDir}/sorrow-1.png",
                 $"{sourceDir}/sorrow-2.png",
             };
+            */
+            var sourceFiles = new List<string>
+            {
+                $"{sourceDir}/forlorn-1.png",
+                $"{sourceDir}/forlorn-2.png",
+                $"{sourceDir}/forlorn-3.png",
+            };
+            this.Dispatcher.Invoke(() => SourceImages.ItemsSource = sourceFiles);
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
             {
@@ -92,14 +111,6 @@ namespace MapStitcher
                 image.RePage();
                 return path;
             }, blockOptions);
-
-            var allGravities = new List<Gravity>()
-            {
-                Gravity.North,
-                Gravity.East,
-                Gravity.South,
-                Gravity.West
-            };
 
             var gravities = new TransformManyBlock<string, NeedleKey>(path =>
             {
@@ -154,8 +165,8 @@ namespace MapStitcher
                     var needleViewImage = state.Image(needle.Key).Clone();
                     needleViewImage.Crop((int)anchor.X, (int)anchor.Y-50, NeedleSize, 100);
 
-                    DisplayImage(Viewer, state.Image(haystack));
-                    DisplayImage(Viewer2, needleViewImage);
+                    //DisplayImage(Viewer, state.Image(haystack));
+                    //DisplayImage(Viewer2, needleViewImage);
 
                     var joinPoint = FindAnchorInImage(needleImage, needle.Gravity, state.Image(haystack));
 
@@ -197,10 +208,11 @@ namespace MapStitcher
                 snapshotState.Complete();
                 await snapshotState.Completion;
                 Console.WriteLine("Pipeline Finished");
-                var joins = state.Joins.GroupBy(k => k.Image1).ToDictionary(k => k.Key, v => v.ToList());
+                var joins = state.Joins.Where(x => sourceFiles.Contains(x.Image1)).GroupBy(k => k.Image1).ToDictionary(k => k.Key, v => v.ToList());
                 var seed = joins.First().Key;
                 var candidates = new Queue<string>();
                 candidates.Enqueue(seed);
+                Console.WriteLine(joins.Count);
 
                 while (candidates.Count > 0)
                 {
@@ -253,6 +265,7 @@ namespace MapStitcher
         public MainWindow()
         {
             InitializeComponent();
+            AppState = new State();
 
             Task.Run(() => DoNetwork());
             //DoStuff();
@@ -389,6 +402,7 @@ canvas.Composite(image2, 2000, 1000);
 
             // Send image to viewer
 
+            /*
             using (var stream = new MemoryStream())
             {
                 BitmapImage bitmapImage = new BitmapImage();
@@ -432,6 +446,7 @@ canvas.Composite(image2, 2000, 1000);
                     this.Title = "DONE";
                 });
             }
+            */
         }
 
         private string keyForImage(string v, object image1, object image2 = null)
@@ -470,10 +485,12 @@ canvas.Composite(image2, 2000, 1000);
             var rows = searchArea.Item1;
             var columns = searchArea.Item2;
 
+            /*
             this.Dispatcher.Invoke(() =>
             {
                 Progress.Value = 0;
             });
+            */
 
             foreach (var y in rows)
             {
@@ -503,15 +520,17 @@ canvas.Composite(image2, 2000, 1000);
                         var ret = new Point(x, y);
                         var temp = haystack.Clone();
                         temp.Crop(x, y - 50, 100, 100);
-                        DisplayImage(Viewer, temp);
+                        //DisplayImage(Viewer, temp);
                         Console.WriteLine($"FOUND MATCH: ({x}, {y})");
                         return ret;
                     }
                 }
+                /*
                 this.Dispatcher.Invoke(() =>
                 {
                     Progress.Value = Math.Abs((double)(y - Math.Min(rows.Last(), rows.First())) / (double)(rows.Last() - rows.First()) * 100);
                 });
+                */
             }
             return null;
         }
@@ -615,8 +634,35 @@ canvas.Composite(image2, 2000, 1000);
         private void Viewer_MouseMove(object sender, MouseEventArgs e)
         {
             var p = e.GetPosition((IInputElement)sender);
-            var p2 = Viewer.PointFromScreen(p);
-            this.Title = $"{p2.X},{p2.Y}";
+            //var p2 = Viewer.PointFromScreen(p);
+            //this.Title = $"{p2.X},{p2.Y}";
+        }
+
+        private void SourceImages_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var selected = (string)SourceImages.SelectedItem;
+
+            if (selected != null)
+            {
+                var image = AppState.Image(selected);
+                if (image != null)
+                {
+                    image = image.Clone();
+                    Task.Run(() => {
+                        var needles = allGravities.Select(x => AppState.GetNeedle(new NeedleKey { Key = selected, Gravity = x })).Where(x => x.HasValue).Select(x => x.Value);
+                        foreach (var needlePoint in needles)
+                        {
+                            var rect = new Drawables()
+                              .StrokeColor(new MagickColor("red"))
+                              .StrokeWidth(2)
+                              .FillOpacity(new Percentage(0))
+                              .Rectangle(needlePoint.X, needlePoint.Y - 20, needlePoint.X + 150, needlePoint.Y + 40);
+                            image.Draw(rect);
+                        }
+                        DisplayImage(Viewer, image);
+                    });
+                }
+            }
         }
     }
 }
