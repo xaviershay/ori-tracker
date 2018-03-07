@@ -24,26 +24,6 @@ using System.Windows.Shapes;
 
 namespace MapStitcher
 {
-    public struct JoinData
-    {
-        public string Source;
-        public string Target;
-        public Point? Join; // If null, no join was found between the two
-    }
-
-    public class State
-    {
-        [JsonIgnore]
-        public ConcurrentDictionary<string, IMagickImage> sources = new ConcurrentDictionary<string, IMagickImage>();
-
-        public ConcurrentDictionary<NeedleKey, Point?> needles = new ConcurrentDictionary<NeedleKey, Point?>();
-        public ConcurrentDictionary<string, JoinData?> joins = new ConcurrentDictionary<string, JoinData?>();
-
-        public IMagickImage Image(string key)
-        {
-            return sources.GetOrAdd(key, (x) => new MagickImage(x));
-        }
-    }
 
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -65,16 +45,19 @@ namespace MapStitcher
             }
             //state = new State();
 
-            Console.WriteLine(JsonConvert.SerializeObject(state));
             //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount - 1, 1));
             var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
             var snapshotState = new ActionBlock<State>((s) =>
             {
-                File.WriteAllText(cacheFile, JsonConvert.SerializeObject(s));
+                var content = "";
+                s.Lock(lockedState => content = JsonConvert.SerializeObject(lockedState));
+                File.WriteAllText(cacheFile, content);
             }, new ExecutionDataflowBlockOptions
             {
                 MaxDegreeOfParallelism = 1
             });
+            state.ChangeListener = snapshotState;
+
             var blockOptions = new ExecutionDataflowBlockOptions
             {
                 TaskScheduler = workerPool,
@@ -112,10 +95,10 @@ namespace MapStitcher
 
             var allGravities = new List<Gravity>()
             {
-                Gravity.North /*,
+                Gravity.North,
                 Gravity.East,
                 Gravity.South,
-                Gravity.West */
+                Gravity.West
             };
 
             var gravities = new TransformManyBlock<string, NeedleKey>(path =>
@@ -123,36 +106,37 @@ namespace MapStitcher
                 return allGravities.Select(g => new NeedleKey() { Key = path, Gravity = g });
             }, blockOptions);
 
-            var findNeedleBlock = new TransformBlock<NeedleKey, NeedleKey>(key =>
+            var findNeedleBlock = new TransformBlock<NeedleKey, NeedleKey>(needle =>
             {
-                Console.WriteLine("Finding needle: {0}", key);
-                state.needles.GetOrAdd(key, (k) =>
+                Console.WriteLine("Finding needle: {0}", needle);
+                if (!state.NeedleExists(needle))
                 {
-                    return FindHighEntropyStrip(state.Image(k.Key), key.Gravity);
-                });
-                snapshotState.Post(state);
-                Console.WriteLine("Found needle: {0}", key);
-                return key;
+                    state.AddNeedle(needle, FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity));
+
+                }
+                Console.WriteLine("Found needle: {0}", needle);
+                return needle;
             }, blockOptions);
 
             var findJoinBlock = new TransformBlock<Tuple<string, NeedleKey>, string>(t =>
             {
-                if (t.Item1 == t.Item2.Key)
+                var haystack = t.Item1;
+                var needle = t.Item2;
+
+                if (haystack == needle.Key)
                 {
-                    Console.WriteLine("Dropping self-join for {0}", t.Item1);
-                    return t.Item1; // TODO: This doesn't mean anything
+                    Console.WriteLine("Dropping self-join for {0}", haystack);
+                    return haystack; // TODO: This doesn't mean anything
                 }
-                if (t.Item2.ToString() != "sorrow-2.png|North")
+                if (needle.ToString() != "sorrow-2.png|North")
                 {
                     Console.WriteLine("Skipping");
-                    return t.Item1;
+                    return haystack;
                 }
-                Console.WriteLine("Finding join: {0} {1}", System.IO.Path.GetFileName(t.Item1), t.Item2);
-                var ret = state.joins.GetOrAdd(t.Item1, (k1) =>
+
+                if (!state.JoinExists(haystack, needle.Key))
                 {
-                    var needle = t.Item2;
-                    Point? potentialAnchor = null;
-                    state.needles.TryGetValue(needle, out potentialAnchor);
+                    Point? potentialAnchor = state.GetNeedle(needle);
 
                     if (!potentialAnchor.HasValue)
                     {
@@ -161,28 +145,24 @@ namespace MapStitcher
                     }
                     var anchor = potentialAnchor.Value;
 
-                    var needleImage = state.Image(t.Item2.Key).Clone();
+                    var needleImage = state.Image(needle.Key).Clone();
                     int NeedleSize = 150; // TODO: Move this needle image cropping back into FindNeedle Task
                     needleImage.Crop((int)anchor.X, (int)anchor.Y, NeedleSize, 1);
 
-                    var needleViewImage = state.Image(t.Item2.Key).Clone();
+                    var needleViewImage = state.Image(needle.Key).Clone();
                     needleViewImage.Crop((int)anchor.X, (int)anchor.Y-50, NeedleSize, 100);
 
-                    DisplayImage(Viewer, state.Image(t.Item1));
+                    DisplayImage(Viewer, state.Image(haystack));
                     DisplayImage(Viewer2, needleViewImage);
 
-                    var joinPoint = FindAnchorInImage(needleImage, t.Item2.Gravity, state.Image(k1));
+                    var joinPoint = FindAnchorInImage(needleImage, needle.Gravity, state.Image(haystack));
 
-                    return new JoinData()
-                    {
-                        Source = k1,
-                        Target = needle.Key,
-                        Join = joinPoint
-                    };
-                });
-                Console.WriteLine("Found join: {0} {1} {2}", System.IO.Path.GetFileName(t.Item1), System.IO.Path.GetFileName(t.Item2.Key), ret);
-                snapshotState.Post(state);
-                return t.Item1; // TODO: Figure out best thing to propagate. Maybe when match found?
+                    state.AddJoinPoint(haystack, needle.Key, joinPoint, anchor);
+
+                }
+
+                Console.WriteLine("Found join: {0} {1}", System.IO.Path.GetFileName(haystack), System.IO.Path.GetFileName(needle.Key));
+                return haystack; // TODO: Figure out best thing to propagate. Maybe when match found?
             }, blockOptions);
 
             var broadcaster = new BroadcastBlock<string>(null);
