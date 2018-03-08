@@ -30,6 +30,9 @@ namespace MapStitcher
         [JsonRequired]
         private ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>> joins;
 
+        [JsonRequired]
+        private HashSet<Tuple<string, NeedleKey>> negativeSearches;
+
         [JsonIgnore]
         private ConcurrentDictionary<string, IMagickImage> sources;
 
@@ -62,6 +65,12 @@ namespace MapStitcher
             needles = new ConcurrentDictionary<NeedleKey, Point?>();
             joins = new ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>>();
             sources = new ConcurrentDictionary<string, IMagickImage>();
+            negativeSearches = new HashSet<Tuple<string, NeedleKey>>();
+        }
+
+        public void ClearNeedle(NeedleKey key)
+        {
+            needles.TryRemove(key, out _);
         }
 
         public IMagickImage Image(string key)
@@ -69,27 +78,38 @@ namespace MapStitcher
             return sources.GetOrAdd(key, (x) => new MagickImage(x));
         }
 
-        public bool JoinExists(string i1, string i2)
+        public bool JoinExists(string haystack, NeedleKey needle)
         {
             lock (lockObject)
             {
-                return JoinsFor(i1).ContainsKey(i2) || JoinsFor(i2).ContainsKey(i1);
+                return negativeSearches.Contains(Tuple.Create(haystack, needle)) || JoinsFor(haystack).ContainsKey(needle.Key) || JoinsFor(needle.Key).ContainsKey(haystack);
             }
         }
 
-        public void AddJoinPoint(string i1, string i2, Point? joinPoint, Point anchor)
+        public void AddJoinPoint(string haystack, NeedleKey needle, Point? joinPoint, Point needleAnchor)
         {
+            // A positive result should be cached as "Connect image1 to image2". Once we have a join, we don't care about the needle/gravity anymore
+            // A negative result should be cached as "Couldn't find something with this NeedleKey, but maybe might find something later"
+            // For now just going to not cache negative results
             Point? point = null;
             if (joinPoint.HasValue)
             {
-                point = new Point(joinPoint.Value.X - anchor.X, joinPoint.Value.Y - anchor.Y);
+                point = new Point(joinPoint.Value.X - needleAnchor.X, joinPoint.Value.Y - needleAnchor.Y);
+
+                Console.WriteLine("jp: {0}, anchor: {1}, offset: {2}", joinPoint, needleAnchor, point);
+                lock (lockObject)
+                {
+                    JoinsFor(haystack).TryAdd(needle.Key, point);
+                    JoinsFor(needle.Key).TryAdd(haystack, Inverse(point));
+                }
+            } else
+            {
+                lock (lockObject)
+                {
+                    negativeSearches.Add(Tuple.Create(haystack, needle));
+                }
             }
 
-            lock (lockObject)
-            {
-                JoinsFor(i1).TryAdd(i2, point);
-                JoinsFor(i2).TryAdd(i1, Inverse(point));
-            }
 
             NotifyChangeListeners();
         }
@@ -118,8 +138,18 @@ namespace MapStitcher
                 return result;
             } else
             {
-                // This can probably return null, but keeping exception for now because not expecting it
-                throw new ArgumentException($"Needle does not exist in state: {needle}");
+                return null;
+            }
+        }
+
+        public void ClearJoin(string v1, string v2)
+        {
+            lock (lockObject)
+            {
+                JoinsFor(v1).TryRemove(v2, out _);
+                JoinsFor(v2).TryRemove(v1, out _);
+
+                negativeSearches.RemoveWhere(x => x.Item1 == v1 && x.Item2.Key == v2);
             }
         }
 

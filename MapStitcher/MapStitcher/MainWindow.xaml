@@ -10,9 +10,19 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
-        <Image Grid.Row="0" Name="Viewer" />
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Image Grid.Column="0" Name="Viewer" />
+            <Image Grid.Column="1" Name="Viewer2" />
+        </Grid>
+
         <ListView Grid.Row="1" Name="SourceImages" SelectionChanged="SourceImages_SelectionChanged" SelectionMode="Single"></ListView>
+        <ListView Grid.Row="2" Name="Joins" SelectionMode="Single" SelectionChanged="Joins_SelectionChanged"></ListView>
     <!--
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>

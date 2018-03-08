@@ -60,6 +60,7 @@
     <Compile Include="CartestianProductBlockTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SerializationTest.cs" />
+    <Compile Include="LinqExtensionTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
