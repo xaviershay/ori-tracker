@@ -30,7 +30,7 @@ namespace Tests
             {
                 Console.WriteLine(block.Receive());
                 Assert.Fail("Should have throw, no input to receive");
-            } catch (InvalidOperationException e)
+            } catch (InvalidOperationException _)
             {
                 Assert.IsTrue(true, "Threw expected exception");
             }

@@ -97,9 +97,11 @@ namespace MapStitcher
                 $"{sourceDir}/forlorn-3.png",
             };
             //state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
+            /*
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-1.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-1.png");
+            */
             this.Dispatcher.Invoke(() => SourceImages.ItemsSource = sourceFiles);
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
@@ -310,10 +312,9 @@ namespace MapStitcher
         private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack)
         {
             // Search in bottom strip for anchor
-            var d = 100;
             var pixels = haystack.GetPixels();
             var needle = needleImage.GetPixels().Select(i => i.ToColor()).ToList();
-            var searchArea = SearchArea(haystack, Opposite(needleGravity));
+            var searchArea = HaystackSearchArea(haystack, Opposite(needleGravity));
             var rows = searchArea.Item1;
             var columns = searchArea.Item2;
 
@@ -402,7 +403,7 @@ namespace MapStitcher
             return Enumerable.Range(from, to - from).ToList();
         }
 
-        private Tuple<List<int>, List<int>> SearchArea(IMagickImage image, Gravity gravity)
+        private Tuple<List<int>, List<int>> NeedleSearchArea(IMagickImage image, Gravity gravity)
         {
             var margin = 550;
             switch (gravity)
@@ -419,13 +420,42 @@ namespace MapStitcher
                     );
                 case Gravity.East:
                     return Tuple.Create(
-                        FromTo(margin, image.Height).OrderFromCenter().ToList(),
+                        FromTo(margin, image.Height - margin).OrderFromCenter().ToList(),
                         FromTo(image.Width - margin, image.Width).AsEnumerable().Reverse().ToList()
                     );
                 case Gravity.West:
                     return Tuple.Create(
                         FromTo(margin, image.Height - margin).OrderFromCenter().ToList(),
                         FromTo(0, margin).ToList()
+                    );
+                default:
+                    throw new ArgumentException($"Unhandled gravity: {gravity}");
+            }
+        }
+
+        private Tuple<List<int>, List<int>> HaystackSearchArea(IMagickImage image, Gravity gravity)
+        {
+            switch (gravity)
+            {
+                case Gravity.South:
+                    return Tuple.Create(
+                      FromTo(image.Height / 2, image.Height).AsEnumerable().Reverse().ToList(),
+                      FromTo(0, image.Width).OrderFromCenter().ToList()
+                    );
+                case Gravity.North:
+                    return Tuple.Create(
+                        FromTo(0, image.Height/2).ToList(),
+                        FromTo(0, image.Width).OrderFromCenter().ToList()
+                    );
+                case Gravity.East:
+                    return Tuple.Create(
+                        FromTo(0, image.Height).OrderFromCenter().ToList(),
+                        FromTo(image.Width / 2, image.Width).AsEnumerable().Reverse().ToList()
+                    );
+                case Gravity.West:
+                    return Tuple.Create(
+                        FromTo(0, image.Height).OrderFromCenter().ToList(),
+                        FromTo(0, image.Width / 2).ToList()
                     );
                 default:
                     throw new ArgumentException($"Unhandled gravity: {gravity}");
@@ -444,7 +474,7 @@ namespace MapStitcher
             Debug.Assert(image.Height > 1 && image.Width > 1, "Assumes non-empty image");
             Debug.Assert(image.Width >= NeedleSize, "Assumes image is at least as big as needle size");
 
-            var searchArea = SearchArea(image, gravity);
+            var searchArea = NeedleSearchArea(image, gravity);
             rows = searchArea.Item1;
             columns = searchArea.Item2;
 
