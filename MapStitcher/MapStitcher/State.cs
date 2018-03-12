@@ -86,6 +86,27 @@ namespace MapStitcher
             }
         }
 
+        public Point? GetJoin(string haystack, NeedleKey needle)
+        {
+            lock(lockObject)
+            {
+                Point? result = null;
+
+                if (negativeSearches.Contains(Tuple.Create(haystack, needle)))
+                {
+                    result = null;
+                } else if (JoinsFor(haystack).ContainsKey(needle.Key))
+                {
+                    JoinsFor(haystack).TryGetValue(needle.Key, out result);
+                } else if (JoinsFor(needle.Key).ContainsKey(haystack))
+                {
+                    JoinsFor(needle.Key).TryGetValue(haystack, out result);
+                }
+                return result;
+            }
+        }
+
+
         public void AddJoinPoint(string haystack, NeedleKey needle, Point? joinPoint, Point needleAnchor)
         {
             // A positive result should be cached as "Connect image1 to image2". Once we have a join, we don't care about the needle/gravity anymore

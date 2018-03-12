@@ -6,11 +6,15 @@
         xmlns:local="clr-namespace:MapStitcher"
         mc:Ignorable="d"
         Title="MainWindow" Height="831.887" Width="1515.839">
+    <Window.Resources>
+        <local:TickConverter x:Key="tickConverter"/>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="auto"/>
+            <RowDefinition Height="300"/>
         </Grid.RowDefinitions>
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
@@ -23,16 +27,48 @@
 
         <ListView Grid.Row="1" Name="SourceImages" SelectionChanged="SourceImages_SelectionChanged" SelectionMode="Single"></ListView>
         <ListView Grid.Row="2" Name="Joins" SelectionMode="Single" SelectionChanged="Joins_SelectionChanged"></ListView>
-    <!--
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="auto"/>
-        </Grid.RowDefinitions>
-        <Image Grid.Row="0" x:Name="Viewer" Margin="8 8 8 8" MouseMove="Viewer_MouseMove" />
-        <Image Grid.Row="1" x:Name="Viewer2" Margin="8 8 8 8" />
-        <ProgressBar x:Name="Progress" HorizontalAlignment="Stretch" Height="10" Grid.Row="2" VerticalAlignment="Top"/>
-        -->
+        <ListView Grid.Row="3" Name="TaskGrid">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn DisplayMemberBinding="{Binding Name}" Width="250">
+                        <GridViewColumnHeader>Task</GridViewColumnHeader>
+                    </GridViewColumn>
+                    <GridViewColumn Width="100">
+                        <GridViewColumnHeader>Progress</GridViewColumnHeader>
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <ProgressBar Value="{Binding Progress, Mode=OneWay}" Maximum="1"></ProgressBar>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Width="150" DisplayMemberBinding="{Binding StartTime}">
+                        <GridViewColumnHeader>Started At</GridViewColumnHeader>
+                    </GridViewColumn>
+                    <GridViewColumn Width="100">
+                        <GridViewColumn.DisplayMemberBinding>
+                            <MultiBinding StringFormat="{}{0:00}:{1:00;00}.{2:000;000}">
+                                <Binding Path="Duration.Minutes" />
+                                <Binding Path="Duration.Seconds" />
+                                <Binding Path="Duration.Milliseconds" />
+                            </MultiBinding>
+                        </GridViewColumn.DisplayMemberBinding>
+                        <GridViewColumnHeader>Duration</GridViewColumnHeader>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Cached, Converter={StaticResource tickConverter}}" Width="50">
+                        <GridViewColumnHeader>Cached</GridViewColumnHeader>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Result}" Width="200">
+                        <GridViewColumnHeader>Result</GridViewColumnHeader>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
     </Grid>
 
 </Window>

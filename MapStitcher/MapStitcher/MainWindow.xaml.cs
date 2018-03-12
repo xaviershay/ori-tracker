@@ -31,6 +31,7 @@ namespace MapStitcher
     public partial class MainWindow : Window
     {
         private int NeedleSize = 50; // TODO: Move this needle image cropping back into FindNeedle Task
+        private ObservableCollection<StitchTask> Tasks = new ObservableCollection<StitchTask>();
         public State AppState { get; private set; }
         private List<Gravity> allGravities = new List<Gravity>()
         {
@@ -57,8 +58,8 @@ namespace MapStitcher
             AppState = state;
 
 
-            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount - 1, 1));
-            var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
+            var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
+            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
             var snapshotState = new ActionBlock<State>((s) =>
             {
                 var content = "";
@@ -96,8 +97,8 @@ namespace MapStitcher
                 $"{sourceDir}/forlorn-2.png",
                 $"{sourceDir}/forlorn-3.png",
             };
-            //state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
             /*
+            state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-1.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-1.png");
@@ -112,13 +113,19 @@ namespace MapStitcher
 
             var cropImagesBlock = new TransformBlock<string, string>(path =>
             {
+                var task = new StitchTask($"Crop {System.IO.Path.GetFileName(path)}");
+                this.Dispatcher.Invoke(() => Tasks.Add(task));
+
                 // TODO: This is destructive, so that's probably bad in concurrent world?
                 var image = state.Image(path);
+                var originalSize = new Size(image.Width, image.Height);
                 var sideMargin = 200; // The sides are darkened, so clip them out.
                 var bounds = new MagickGeometry(sideMargin, 370, image.Width - sideMargin * 2, image.Height - 250 - 370);
                 image.Crop(bounds);
                 image.RePage();
                 image.Write("C:/Users/Xavier/Temp/" + System.IO.Path.GetFileName(path));
+
+                task.Complete(String.Format("{0} → {1}", originalSize, new Size(image.Width, image.Height)), false);
                 return path;
             }, blockOptions);
 
@@ -129,13 +136,25 @@ namespace MapStitcher
 
             var findNeedleBlock = new TransformBlock<NeedleKey, NeedleKey>(needle =>
             {
-                Console.WriteLine("Finding needle: {0}", needle);
+                Point? result = null;
+                var cached = false;
+                var task = new StitchTask($"Finding needle at {needle}");
+                this.Dispatcher.Invoke(() => Tasks.Add(task));
                 if (!state.NeedleExists(needle))
                 {
-                    state.AddNeedle(needle, FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity));
-
+                    result = FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity, task);
+                    state.AddNeedle(needle, result);
+                } else
+                {
+                    cached = true;
+                    result = state.GetNeedle(needle);
                 }
-                Console.WriteLine("Found needle: {0}", needle);
+                var resultLabel = "Not found";
+                if (result.HasValue)
+                {
+                    resultLabel = $"Found at ({result})";
+                }
+                task.Complete(resultLabel, cached);
                 return needle;
             }, blockOptions);
 
@@ -144,18 +163,22 @@ namespace MapStitcher
                 var haystack = t.Item1;
                 var needle = t.Item2;
 
-                Console.WriteLine("Message recv: {0} {1}", System.IO.Path.GetFileName(haystack), needle);
-
                 if (haystack == needle.Key)
                 {
-                    Console.WriteLine("Dropping self-join for {0}", haystack);
                     return haystack; // TODO: This doesn't mean anything
                 }
+                /*
                 if (!(System.IO.Path.GetFileName(haystack) == "forlorn-2.png" && needle.ToString() == "forlorn-3.png|West"))
                 {
                     Console.WriteLine("Skipping");
                     return haystack;
                 }
+                */
+
+                Point? result = null;
+                var cached = false;
+                var task = new StitchTask($"Searching {System.IO.Path.GetFileName(haystack)} for {needle}");
+                this.Dispatcher.Invoke(() => Tasks.Add(task));
 
                 if (!state.JoinExists(haystack, needle))
                 {
@@ -166,24 +189,36 @@ namespace MapStitcher
                         Console.WriteLine("No needle exists for {0}, so no join possible", needle);
                         return null;
                     }
+
                     var anchor = potentialAnchor.Value;
 
                     var needleImage = state.Image(needle.Key).Clone();
                     needleImage.Crop((int)anchor.X, (int)anchor.Y, NeedleSize, NeedleSize);
 
+                    /*
                     var needleViewImage = state.Image(needle.Key).Clone();
                     needleViewImage.Crop((int)anchor.X, (int)anchor.Y-50, NeedleSize, 100);
+                    */
 
                     //DisplayImage(Viewer, state.Image(haystack));
                     //DisplayImage(Viewer2, needleViewImage);
                     Console.WriteLine("Searching for {0} in {1}", needle, System.IO.Path.GetFileName(haystack));
-                    var joinPoint = FindAnchorInImage(needleImage, needle.Gravity, state.Image(haystack));
+                    result = FindAnchorInImage(needleImage, needle.Gravity, state.Image(haystack), task);
 
-                    state.AddJoinPoint(haystack, needle, joinPoint, anchor);
+                    state.AddJoinPoint(haystack, needle, result, anchor);
 
+                } else
+                {
+                    cached = true;
+                    result = state.GetJoin(haystack, needle);
                 }
+                string resultLabel = "Not found";
+                if (result.HasValue)
+                {
+                    resultLabel = $"Found at ({result.Value})";
+                }
+                task.Complete(resultLabel, cached);
 
-                Console.WriteLine("Found join: {0} {1}", System.IO.Path.GetFileName(haystack), System.IO.Path.GetFileName(needle.Key));
                 return haystack; // TODO: Figure out best thing to propagate. Maybe when match found?
             }, blockOptions);
 
@@ -274,12 +309,38 @@ namespace MapStitcher
                 });
             }
         }
+        // https://stackoverflow.com/questions/41132649/get-datagrids-scrollviewer
+        public static ScrollViewer GetScrollViewer(UIElement element)
+        {
+            if (element == null) return null;
 
+            ScrollViewer retour = null;
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element) && retour == null; i++) {
+                if (VisualTreeHelper.GetChild(element, i) is ScrollViewer) {
+                    retour = (ScrollViewer) (VisualTreeHelper.GetChild(element, i));
+                }
+                else {
+                    retour = GetScrollViewer(VisualTreeHelper.GetChild(element, i) as UIElement);
+                }
+            }
+            return retour;
+        }
         public MainWindow()
         {
             InitializeComponent();
             AppState = new State();
 
+            TaskGrid.ItemsSource = Tasks;
+            // Implement "sticky" scrolling. If the control is scrolled to the bottom, keep it that
+            // way when new items are added. Otherwise, don't change the scroll position.
+            Tasks.CollectionChanged += (sender, args) =>
+            {
+                var viewer = GetScrollViewer(TaskGrid);
+                if (viewer.VerticalOffset >= viewer.ScrollableHeight - 1)
+                {
+                    TaskGrid.ScrollIntoView(Tasks.Last());
+                }
+            };
             Task.Run(() => DoNetwork());
         }
 
@@ -309,9 +370,8 @@ namespace MapStitcher
             }
         }
 
-        private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack)
+        private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack, IProgress<double> progress)
         {
-            // Search in bottom strip for anchor
             var pixels = haystack.GetPixels();
             var needle = needleImage.GetPixels().Select(i => i.ToColor()).ToList();
             var searchArea = HaystackSearchArea(haystack, Opposite(needleGravity));
@@ -334,20 +394,29 @@ namespace MapStitcher
 
             var threshold = new Percentage(15);
 
+            /*
             var displayHaystack = haystack.Clone();
             displayHaystack.Crop(minX, minY, maxX - minX, maxY - minY);
             DisplayImage(Viewer, displayHaystack);
             DisplayImage(Viewer2, needleImage);
+            */
+
+            double totalCycles = rows.Count() * columns.Count();
+            double currentCycle = 0;
 
             foreach (var y in rows)
             {
-                if (y - minY + NeedleSize >= gridHeight)
-                {
-                    continue;
-                }
 
                 foreach (var x in columns)
                 {
+                    progress.Report(currentCycle / totalCycles);
+                    currentCycle++;
+
+                    if (y - minY + NeedleSize >= gridHeight)
+                    {
+                        continue;
+                    }
+
                     if (x - minX + NeedleSize >= gridWidth)
                     {
                         continue;
@@ -371,18 +440,14 @@ namespace MapStitcher
 
                     if (found)
                     {
+                        progress.Report(1.0);
                         var ret = new Point(x, y);
                         Console.WriteLine($"FOUND MATCH: ({x}, {y})");
                         return ret;
                     }
                 }
-                /*
-                this.Dispatcher.Invoke(() =>
-                {
-                    Progress.Value = Math.Abs((double)(y - Math.Min(rows.Last(), rows.First())) / (double)(rows.Last() - rows.First()) * 100);
-                });
-                */
             }
+            progress.Report(1.0);
             return null;
         }
 
@@ -462,7 +527,7 @@ namespace MapStitcher
             }
         }
 
-        private Point? FindHighEntropyStrip(IMagickImage image, Gravity gravity)
+        private Point? FindHighEntropyStrip(IMagickImage image, Gravity gravity, IProgress<double> progress)
         {
             var pixels = image.GetPixels();
 
@@ -494,15 +559,20 @@ namespace MapStitcher
             var bestNeedleStddev = 0.0;
             Point? bestNeedle = null;
 
+            double totalCycles = rows.Count() * columns.Count();
+            double currentCycle = 0;
+
             foreach (var y in rows)
             {
-                if (y - minY + NeedleSize >= gridHeight)
-                {
-                    continue;
-                }
-
                 foreach (var x in columns)
                 {
+                    progress.Report(currentCycle / totalCycles);
+                    currentCycle++;
+                    if (y - minY + NeedleSize >= gridHeight)
+                    {
+                        continue;
+                    }
+
                     if (x - minX + NeedleSize >= gridWidth)
                     {
                         continue;
