@@ -12,6 +12,8 @@ namespace MapStitcher
         public string Result { get; internal set; }
         public bool? Cached { get; internal set; }
 
+        public Action Preview { get; set; }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public StitchTask(string name)

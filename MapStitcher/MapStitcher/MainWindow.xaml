@@ -27,7 +27,7 @@
 
         <ListView Grid.Row="1" Name="SourceImages" SelectionChanged="SourceImages_SelectionChanged" SelectionMode="Single"></ListView>
         <ListView Grid.Row="2" Name="Joins" SelectionMode="Single" SelectionChanged="Joins_SelectionChanged"></ListView>
-        <ListView Grid.Row="3" Name="TaskGrid">
+        <ListView Grid.Row="3" Name="TaskGrid" SelectionChanged="TaskGrid_SelectionChanged">
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />

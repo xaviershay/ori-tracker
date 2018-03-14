@@ -54,7 +54,6 @@ namespace MapStitcher
             {
                 Console.WriteLine("Couldn't load cache");
             }
-            //state = new State();
             AppState = state;
 
 
@@ -99,10 +98,10 @@ namespace MapStitcher
             };
             /*
             state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
+            */
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-1.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-1.png");
-            */
             this.Dispatcher.Invoke(() => SourceImages.ItemsSource = sourceFiles);
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
@@ -119,8 +118,10 @@ namespace MapStitcher
                 // TODO: This is destructive, so that's probably bad in concurrent world?
                 var image = state.Image(path);
                 var originalSize = new Size(image.Width, image.Height);
-                var sideMargin = 200; // The sides are darkened, so clip them out.
-                var bounds = new MagickGeometry(sideMargin, 370, image.Width - sideMargin * 2, image.Height - 250 - 370);
+                int sideMargin = (int)(image.Width * 0.06); // The sides are darkened, so clip them out.
+                int topMargin = (int)(image.Height * 0.17);
+                int bottomMargin = (int)(image.Height * 0.10);
+                var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
                 image.Crop(bounds);
                 image.RePage();
                 image.Write("C:/Users/Xavier/Temp/" + System.IO.Path.GetFileName(path));
@@ -168,7 +169,7 @@ namespace MapStitcher
                     return haystack; // TODO: This doesn't mean anything
                 }
                 /*
-                if (!(System.IO.Path.GetFileName(haystack) == "forlorn-2.png" && needle.ToString() == "forlorn-3.png|West"))
+                if (!(System.IO.Path.GetFileName(haystack) == "forlorn-2.png" && needle.ToString() == "forlorn-1.png|North"))
                 {
                     Console.WriteLine("Skipping");
                     return haystack;
@@ -187,6 +188,7 @@ namespace MapStitcher
                     if (!potentialAnchor.HasValue)
                     {
                         Console.WriteLine("No needle exists for {0}, so no join possible", needle);
+                        task.Complete("Needle doesn't exist", true);
                         return null;
                     }
 
@@ -370,29 +372,47 @@ namespace MapStitcher
             }
         }
 
-        private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack, IProgress<double> progress)
+        private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task)
         {
+            IProgress<double> progress = task;
             var pixels = haystack.GetPixels();
             var needle = needleImage.GetPixels().Select(i => i.ToColor()).ToList();
             var searchArea = HaystackSearchArea(haystack, Opposite(needleGravity));
             var rows = searchArea.Item1;
             var columns = searchArea.Item2;
 
+            /*
+            rows = FromTo(500, 600);
+            columns = FromTo(200, 300);
+            */
             var minY = rows.Min();
             var maxY = rows.Max();
 
             var minX = columns.Min();
             var maxX = columns.Max();
+
             var imageDimensions = Tuple.Create(haystack.Width, haystack.Height);
 
+            task.Preview = () =>
+            {
+                var previewImage = haystack.Clone();
+
+                var rect = new Drawables()
+                  .StrokeColor(new MagickColor("yellow"))
+                  .StrokeWidth(2)
+                  .FillOpacity(new Percentage(10))
+                  .Rectangle(minX, minY, maxX, maxY);
+                previewImage.Draw(rect);
+                DisplayImage(Viewer, previewImage);
+                DisplayImage(Viewer2, needleImage);
+            };
+
             var needlePixels = needleImage.GetPixels();
-            List<List<MagickColor>> needleGrid = FromTo(0, needleImage.Height).Select(y => FromTo(0, needleImage.Width).Select(x => needlePixels.GetPixel(x, y).ToColor()).ToList()).ToList();
-            List<List<MagickColor>> pixelGrid = FromTo(minY, maxY).Select(y => FromTo(minX, maxX).Select(x => pixels.GetPixel(x, y).ToColor()).ToList()).ToList();
+            List<List<System.Drawing.Color>> needleGrid = FromTo(0, needleImage.Height).Select(y => FromTo(0, needleImage.Width).Select(x => needlePixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
+            List<List<System.Drawing.Color>> pixelGrid = FromTo(minY, maxY).Select(y => FromTo(minX, maxX).Select(x => pixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
 
             var gridWidth = maxX - minX;
             var gridHeight = maxY - minY;
-
-            var threshold = new Percentage(15);
 
             /*
             var displayHaystack = haystack.Clone();
@@ -406,10 +426,10 @@ namespace MapStitcher
 
             foreach (var y in rows)
             {
+                progress.Report(currentCycle / totalCycles);
 
                 foreach (var x in columns)
                 {
-                    progress.Report(currentCycle / totalCycles);
                     currentCycle++;
 
                     if (y - minY + NeedleSize >= gridHeight)
@@ -423,6 +443,7 @@ namespace MapStitcher
                     }
 
                     var found = true;
+                    var matches = 0;
 
                     for (var x2 = x - minX; x2 < x - minX + NeedleSize && found; x2++)
                     {
@@ -431,24 +452,41 @@ namespace MapStitcher
                             var needlePixel = needleGrid[y2 - (y - minY)][x2 - (x - minX)];
                             var haystackPixel = pixelGrid[y2][x2];
 
-                            if (!needlePixel.FuzzyEquals(haystackPixel, threshold))
+                            if (!FuzzyEquals(needlePixel, haystackPixel, Math.Pow(255 * 0.15, 2)))
                             {
-                                found = false;
+                                //found = false;
+                            } else
+                            {
+                                matches++;
                             }
                         }
                     }
 
-                    if (found)
+                    if (matches / Math.Pow(NeedleSize, 2) > 0.80)
                     {
                         progress.Report(1.0);
                         var ret = new Point(x, y);
                         Console.WriteLine($"FOUND MATCH: ({x}, {y})");
+
+                        task.Preview = () =>
+                        {
+                            var previewImage = haystack.Clone();
+                            previewImage.Crop(x, y, NeedleSize, NeedleSize);
+                            DisplayImage(Viewer, previewImage);
+                            DisplayImage(Viewer2, needleImage);
+                        };
                         return ret;
                     }
                 }
             }
             progress.Report(1.0);
             return null;
+        }
+
+        private bool FuzzyEquals(System.Drawing.Color a, System.Drawing.Color b, double thresholdSquared)
+        {
+            var vectorDistanceSquared = Math.Pow((a.R - b.R), 2) + Math.Pow(a.G - b.G, 2) + Math.Pow(a.B - b.B, 2);
+            return vectorDistanceSquared <= thresholdSquared;
         }
 
         private Gravity Opposite(Gravity gravity)
@@ -470,28 +508,30 @@ namespace MapStitcher
 
         private Tuple<List<int>, List<int>> NeedleSearchArea(IMagickImage image, Gravity gravity)
         {
-            var margin = 550;
+            var verticalMargin = image.Height / 4;
+            var horizontalMargin = image.Height / 4;
+
             switch (gravity)
             {
                 case Gravity.South:
                     return Tuple.Create(
-                      FromTo(image.Height - margin, image.Height).AsEnumerable().Reverse().ToList(),
-                      FromTo(margin, image.Width - margin).OrderFromCenter().ToList()
+                      FromTo(image.Height - verticalMargin, image.Height).AsEnumerable().Reverse().ToList(),
+                      FromTo(horizontalMargin, image.Width - horizontalMargin).OrderFromCenter().ToList()
                     );
                 case Gravity.North:
                     return Tuple.Create(
-                        FromTo(0, margin).ToList(),
-                        FromTo(margin, image.Width - margin).OrderFromCenter().ToList()
+                        FromTo(0, verticalMargin).ToList(),
+                        FromTo(horizontalMargin, image.Width - horizontalMargin).OrderFromCenter().ToList()
                     );
                 case Gravity.East:
                     return Tuple.Create(
-                        FromTo(margin, image.Height - margin).OrderFromCenter().ToList(),
-                        FromTo(image.Width - margin, image.Width).AsEnumerable().Reverse().ToList()
+                        FromTo(verticalMargin, image.Height - verticalMargin).OrderFromCenter().ToList(),
+                        FromTo(image.Width - horizontalMargin, image.Width).AsEnumerable().Reverse().ToList()
                     );
                 case Gravity.West:
                     return Tuple.Create(
-                        FromTo(margin, image.Height - margin).OrderFromCenter().ToList(),
-                        FromTo(0, margin).ToList()
+                        FromTo(verticalMargin, image.Height - verticalMargin).OrderFromCenter().ToList(),
+                        FromTo(0, horizontalMargin).ToList()
                     );
                 default:
                     throw new ArgumentException($"Unhandled gravity: {gravity}");
@@ -509,7 +549,7 @@ namespace MapStitcher
                     );
                 case Gravity.North:
                     return Tuple.Create(
-                        FromTo(0, image.Height/2).ToList(),
+                        FromTo(0, image.Height / 2).ToList(),
                         FromTo(0, image.Width).OrderFromCenter().ToList()
                     );
                 case Gravity.East:
@@ -649,11 +689,14 @@ def finalize(existingAggregate):
                     */
                 }
             }
-            if (bestNeedle.HasValue)
+            if (bestNeedle.HasValue && bestNeedleStddev > 0.03)
             {
-                Console.WriteLine("Found: {0}", bestNeedle.Value);
+                Console.WriteLine("Found: {0} @ {1} for {2}", bestNeedle.Value, bestNeedleStddev, gravity);
+                return bestNeedle;
+            } else
+            {
+                return null;
             }
-            return bestNeedle;
         }
 
         private void Viewer_MouseMove(object sender, MouseEventArgs e)
@@ -729,6 +772,17 @@ def finalize(existingAggregate):
             } else
             {
                 return $"+{(int)x}";
+            }
+        }
+
+        private void TaskGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var selected = (StitchTask)TaskGrid.SelectedItem;
+
+            if (selected != null && selected.Preview != null)
+            {
+                // TODO: Need to put on background thread
+                selected.Preview.Invoke();
             }
         }
     }
