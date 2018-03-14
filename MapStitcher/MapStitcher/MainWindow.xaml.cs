@@ -30,7 +30,7 @@ namespace MapStitcher
     /// </summary>
     public partial class MainWindow : Window
     {
-        private int NeedleSize = 50; // TODO: Move this needle image cropping back into FindNeedle Task
+        private int NeedleSize = 100; // TODO: Move this needle image cropping back into FindNeedle Task
         private ObservableCollection<StitchTask> Tasks = new ObservableCollection<StitchTask>();
         public State AppState { get; private set; }
         private List<Gravity> allGravities = new List<Gravity>()
@@ -54,6 +54,7 @@ namespace MapStitcher
             {
                 Console.WriteLine("Couldn't load cache");
             }
+            //state = new State();
             AppState = state;
 
 
@@ -90,18 +91,21 @@ namespace MapStitcher
                 $"{sourceDir}/sorrow-2.png",
             };
             */
+            /*
             var sourceFiles = new List<string>
             {
                 $"{sourceDir}/forlorn-1.png",
                 $"{sourceDir}/forlorn-2.png",
                 $"{sourceDir}/forlorn-3.png",
             };
+            */
+            var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
             /*
             state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
-            */
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-1.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-1.png");
+            */
             this.Dispatcher.Invoke(() => SourceImages.ItemsSource = sourceFiles);
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
@@ -124,7 +128,7 @@ namespace MapStitcher
                 var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
                 image.Crop(bounds);
                 image.RePage();
-                image.Write("C:/Users/Xavier/Temp/" + System.IO.Path.GetFileName(path));
+                Console.WriteLine("Crop done");
 
                 task.Complete(String.Format("{0} → {1}", originalSize, new Size(image.Width, image.Height)), false);
                 return path;
@@ -149,6 +153,37 @@ namespace MapStitcher
                 {
                     cached = true;
                     result = state.GetNeedle(needle);
+                    task.Preview = () =>
+                    {
+                        var image = state.Image(needle.Key).Clone();
+                        var searchArea = NeedleSearchArea(image, needle.Gravity);
+                        var rows = searchArea.Item1;
+                        var columns = searchArea.Item2;
+
+                        var minX = columns.Min();
+                        var maxX = columns.Max();
+                        var minY = rows.Min();
+                        var maxY = rows.Max();
+
+                        var preview = image;
+                        var rect = new Drawables()
+                          .StrokeWidth(2)
+                          .StrokeColor(new MagickColor("yellow"))
+                          .FillOpacity(new Percentage(0))
+                          .Rectangle(minX, minY, maxX, maxY);
+                        preview.Draw(rect);
+
+                        if (result.HasValue)
+                        {
+                            var needleRect = new Drawables()
+                              .StrokeWidth(2)
+                              .StrokeColor(new MagickColor("red"))
+                              .FillOpacity(new Percentage(0))
+                              .Rectangle(result.Value.X, result.Value.Y, result.Value.X + NeedleSize, result.Value.Y + NeedleSize);
+                            preview.Draw(needleRect);
+                        }
+                        DisplayImage(Viewer, preview);
+                    };
                 }
                 var resultLabel = "Not found";
                 if (result.HasValue)
@@ -205,7 +240,7 @@ namespace MapStitcher
                     //DisplayImage(Viewer, state.Image(haystack));
                     //DisplayImage(Viewer2, needleViewImage);
                     Console.WriteLine("Searching for {0} in {1}", needle, System.IO.Path.GetFileName(haystack));
-                    result = FindAnchorInImage(needleImage, needle.Gravity, state.Image(haystack), task);
+                    result = FindAnchorInImage2(needleImage, needle.Gravity, state.Image(haystack), task);
 
                     state.AddJoinPoint(haystack, needle, result, anchor);
 
@@ -250,41 +285,75 @@ namespace MapStitcher
             }
             headBlock.Complete();
 
-            await sink.Completion.ContinueWith(async _ => {
+            await sink.Completion.ContinueWith(async _ =>
+            {
                 snapshotState.Complete();
                 await snapshotState.Completion;
                 Console.WriteLine("Pipeline Finished");
-                var joins = state.Joins.Where(x => sourceFiles.Contains(x.Image1)).GroupBy(k => k.Image1).ToDictionary(k => k.Key, v => v.ToList());
-                if (joins.Count > 0)
+                Dictionary<string, Point> completedJoins = new Dictionary<string, Point>();
+
+                //var remainingJoins = state.Joins.Where(x => sourceFiles.Contains(x.Image1)).GroupBy(k => k.Image1).ToDictionary(k => k.Key, v => v.ToList()).ToList();
+                var remainingJoins = new List<State.Join>(state.Joins);
+                var rejects = new List<State.Join>();
+                var images = new MagickImageCollection();
+                var lastCycleCount = 0;
+
+                while (remainingJoins.Count > 0 && remainingJoins.Count != lastCycleCount)
                 {
-                    var seed = joins.First().Key;
-                    var candidates = new Queue<string>();
-                    candidates.Enqueue(seed);
-                    Console.WriteLine(joins.Count);
-
-                    while (candidates.Count > 0)
+                    lastCycleCount = remainingJoins.Count;
+                    foreach (var join in remainingJoins)
                     {
-                        var current = candidates.Dequeue();
-                        List<State.Join> localJoins = null;
-                        joins.TryGetValue(current, out localJoins);
-                        //joins.Remove(seed);
-                        // TODO: Can replace with ILookup?
-
-                        if (localJoins != null)
+                        if (completedJoins.Count == 0)
                         {
-                            foreach (var localJoin in localJoins)
+                            // Initial seed
+                            var i1 = state.Image(join.Image1).Clone();
+                            var i2 = state.Image(join.Image2).Clone();
+                            i2.Page = new MagickGeometry($"{ToOffset(join.JoinPoint.X)}{ToOffset(join.JoinPoint.Y)}");
+                            images.Add(i1);
+                            images.Add(i2);
+
+                            completedJoins.Add(join.Image1, new Point(0, 0));
+                            completedJoins.Add(join.Image2, join.JoinPoint);
+                        }
+                        else
+                        {
+                            Point offset = join.JoinPoint;
+                            if (completedJoins.ContainsKey(join.Image1) && completedJoins.ContainsKey(join.Image2))
                             {
-                                candidates.Enqueue(localJoin.Image2);
-                                Console.WriteLine("Joining {0}", localJoin);
+                                // NOOP
+                                //throw new Exception("Just curious what causes this");
+                            } else if (completedJoins.ContainsKey(join.Image1))
+                            {
+                                completedJoins.TryGetValue(join.Image1, out offset);
+
+                                var i2 = state.Image(join.Image2).Clone();
+                                var joinPoint = new Point(join.JoinPoint.X + offset.X, join.JoinPoint.Y + offset.Y);
+                                i2.Page = new MagickGeometry($"{ToOffset(joinPoint.X)}{ToOffset(joinPoint.Y)}");
+                                images.Add(i2);
+                                completedJoins.Add(join.Image2, joinPoint);
+                            }
+                            else if (completedJoins.ContainsKey(join.Image2))
+                            {
+                                completedJoins.TryGetValue(join.Image2, out offset);
+
+                                var i1 = state.Image(join.Image1).Clone();
+                                var joinPoint = new Point(offset.X - join.JoinPoint.X, offset.Y - join.JoinPoint.Y);
+                                i1.Page = new MagickGeometry($"{ToOffset(joinPoint.X)}{ToOffset(joinPoint.Y)}");
+                                images.Add(i1);
+                                completedJoins.Add(join.Image1, joinPoint);
+                            }
+                            else
+                            {
+                                rejects.Add(join);
                             }
                         }
                     }
-                    this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
+                    remainingJoins = rejects.ToList();
+                    rejects.Clear();
                 }
-                // Put joins into a bag
-                // Choose seed image
-                // Find all connected images, expand extent ... store offsets somehow?
-                // Add all connected images to bag, BFS through them
+                var merged = images.Merge();
+                DisplayImage(Viewer, merged);
+                this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
             });
         }
 
@@ -372,9 +441,133 @@ namespace MapStitcher
             }
         }
 
+        private List<List<System.Drawing.Color>> toPixels(IMagickImage image)
+        {
+            var pixels = image.GetPixels();
+            return FromTo(0, image.Height).Select(y => FromTo(0, image.Width).Select(x => pixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
+        }
+public class DuplicateKeyComparer<TKey>
+                :
+             IComparer<TKey> where TKey : IComparable
+{
+    #region IComparer<TKey> Members
+
+    public int Compare(TKey x, TKey y)
+    {
+        int result = x.CompareTo(y);
+
+        if (result == 0)
+            return 1;   // Handle equality as beeing greater
+        else
+            return result;
+    }
+
+    #endregion
+}
+        private Point? FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task)
+        {
+            // Resize needle 
+            var magnification = Math.Min((double)4 / needleImage.Width, 1.0);
+
+            var resizeAmount = new Percentage(magnification * 100);
+
+            var template = needleImage.Clone();
+            template.Resize(resizeAmount);
+
+            var searchArea = haystack.Clone();
+            searchArea.Resize(resizeAmount);
+
+            task.Preview = () =>
+            {
+                DisplayImage(Viewer, searchArea);
+                DisplayImage(Viewer2, template);
+            };
+
+            var templatePixels = toPixels(template);
+            var searchPixels = toPixels(searchArea);
+
+            var candidates = new SortedList<double, Point>(new DuplicateKeyComparer<double>());
+
+            for (var y = 0; y < searchPixels.Count - templatePixels.Count; y++)
+            {
+                var row = searchPixels[y];
+                for (var x = 0; x < row.Count - templatePixels.First().Count; x++)
+                {
+
+                    var sumOfDistance = 0.0;
+                    var totalComparisons = 0.0;
+
+                    for (var y2 = 0; y2 < templatePixels.Count; y2++)
+                    {
+                        var templateRow = templatePixels[y2];
+
+                        for (var x2 = 0; x2 < templateRow.Count; x2++)
+                        {
+                            var distance = PixelDistance(searchPixels[y+y2][x+x2], templateRow[x2]);
+
+                            sumOfDistance += distance;
+                            totalComparisons++;
+                        }
+                    }
+
+                    var percentageDifference = sumOfDistance / totalComparisons;
+
+                    candidates.Add(percentageDifference, new Point(x, y));
+                }
+            }
+
+            task.Preview = () =>
+            {
+                var preview = searchArea.Clone();
+
+                if (candidates.Count > 0)
+                {
+                    var max = candidates.Last().Key;
+                    var min = candidates.First().Key;
+
+                    foreach (var candidate in candidates.Take(1))
+                    {
+                        var x = candidate.Value.X;
+                        var y = candidate.Value.Y;
+                        var whiteAmount = (candidate.Key - min) / (max - min);
+//                        preview.Crop((int)x, (int)y, template.Width, template.Height);
+
+                        var rect = new Drawables()
+                          .FillColor(new MagickColor((byte)(255 * whiteAmount), 255, (byte)(255 * whiteAmount)))
+                          .FillOpacity(new Percentage(0.05))
+                          .Rectangle(x, y, x + template.Width, y + template.Height);
+                        preview.Draw(rect);
+                    }
+                }
+                DisplayImage(Viewer, preview);
+                //DisplayImage(Viewer2, searchArea);
+                DisplayImage(Viewer2, template);
+            };
+
+            var threshold = 400; // TODO: What should this be?
+
+            if (candidates.Count > 0)
+            {
+                var bestPoint = candidates.First();
+
+                if (bestPoint.Key < threshold)
+                {
+                    return new Point(bestPoint.Value.X / magnification, bestPoint.Value.Y / magnification);
+                } 
+
+            }
+            return null;
+        }
+
         private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task)
         {
             IProgress<double> progress = task;
+            haystack = haystack.Clone();
+            needleImage = needleImage.Clone();
+
+            haystack.Resize(new Percentage(25));
+            needleImage.Resize(new Percentage(25));
+
             var pixels = haystack.GetPixels();
             var needle = needleImage.GetPixels().Select(i => i.ToColor()).ToList();
             var searchArea = HaystackSearchArea(haystack, Opposite(needleGravity));
@@ -489,6 +682,11 @@ namespace MapStitcher
             return vectorDistanceSquared <= thresholdSquared;
         }
 
+        private double PixelDistance(System.Drawing.Color a, System.Drawing.Color b)
+        {
+            return Math.Pow((a.R - b.R), 2) + Math.Pow(a.G - b.G, 2) + Math.Pow(a.B - b.B, 2);
+        }
+
         private Gravity Opposite(Gravity gravity)
         {
             switch (gravity)
@@ -567,8 +765,9 @@ namespace MapStitcher
             }
         }
 
-        private Point? FindHighEntropyStrip(IMagickImage image, Gravity gravity, IProgress<double> progress)
+        private Point? FindHighEntropyStrip(IMagickImage image, Gravity gravity, StitchTask task)
         {
+            IProgress<double> progress = task;
             var pixels = image.GetPixels();
 
             var t1 = DateTime.UtcNow;
@@ -589,6 +788,18 @@ namespace MapStitcher
             var minX = columns.Min();
             var maxX = columns.Max();
             var imageDimensions = Tuple.Create(image.Width, image.Height);
+
+            task.Preview = () =>
+            {
+                var preview = image.Clone();
+                var rect = new Drawables()
+                  .StrokeWidth(2)
+                  .StrokeColor(new MagickColor("yellow"))
+                  .FillOpacity(new Percentage(0))
+                  .Rectangle(minX, minY, maxX, maxY);
+                preview.Draw(rect);
+                DisplayImage(Viewer, preview);
+            };
 
             List<List<Pixel>> pixelGrid = FromTo(minY, maxY).Select(y => FromTo(minX, maxX).Select(x => pixels.GetPixel(x, y)).ToList()).ToList();
             List<List<float>> brightnessGrid = pixelGrid.Select(xs => xs.Select(p => p.ToColor().ToColor().GetBrightness()).ToList()).ToList();
@@ -692,6 +903,24 @@ def finalize(existingAggregate):
             if (bestNeedle.HasValue && bestNeedleStddev > 0.03)
             {
                 Console.WriteLine("Found: {0} @ {1} for {2}", bestNeedle.Value, bestNeedleStddev, gravity);
+                task.Preview = () =>
+                {
+                    var preview = image.Clone();
+                    var rect = new Drawables()
+                      .StrokeWidth(2)
+                      .StrokeColor(new MagickColor("yellow"))
+                      .FillOpacity(new Percentage(0))
+                      .Rectangle(minX, minY, maxX, maxY);
+                    preview.Draw(rect);
+
+                    var needleRect = new Drawables()
+                      .StrokeWidth(2)
+                      .StrokeColor(new MagickColor("red"))
+                      .FillOpacity(new Percentage(0))
+                      .Rectangle(bestNeedle.Value.X, bestNeedle.Value.Y, bestNeedle.Value.X + NeedleSize, bestNeedle.Value.Y + NeedleSize);
+                    preview.Draw(needleRect);
+                    DisplayImage(Viewer, preview);
+                };
                 return bestNeedle;
             } else
             {

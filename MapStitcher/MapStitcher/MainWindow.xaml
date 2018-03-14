@@ -36,7 +36,7 @@
             </ListView.ItemContainerStyle>
             <ListView.View>
                 <GridView>
-                    <GridViewColumn DisplayMemberBinding="{Binding Name}" Width="250">
+                    <GridViewColumn DisplayMemberBinding="{Binding Name}" Width="300">
                         <GridViewColumnHeader>Task</GridViewColumnHeader>
                     </GridViewColumn>
                     <GridViewColumn Width="100">
