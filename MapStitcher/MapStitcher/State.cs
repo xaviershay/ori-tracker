@@ -21,7 +21,7 @@ namespace MapStitcher
         private Dictionary<SearchKey, SearchResult> searchResults;
 
         [JsonIgnore]
-        private ConcurrentDictionary<string, IMagickImage> sources;
+        private Dictionary<string, IMagickImage> sources;
 
         [JsonIgnore]
         public ITargetBlock<State> ChangeListener;
@@ -46,13 +46,20 @@ namespace MapStitcher
         {
             ChangeListener = DataflowBlock.NullTarget<State>();
             needles = new Dictionary<NeedleKey, NeedleResult>();
-            sources = new ConcurrentDictionary<string, IMagickImage>();
+            sources = new Dictionary<string, IMagickImage>();
             searchResults = new Dictionary<SearchKey, SearchResult>();
         }
 
         public IMagickImage Image(string key)
         {
-            return sources.GetOrAdd(key, (x) => new MagickImage(x));
+            IMagickImage result = null;
+            sources.TryGetValue(key, out result);
+            return result;
+        }
+
+        public IMagickImage GetOrAddImage(string key, Func<IMagickImage> f)
+        {
+            return GetOrAddCached(sources, key, f);
         }
 
         public NeedleResult GetOrAddNeedle(NeedleKey needle, Func<NeedleResult> f)

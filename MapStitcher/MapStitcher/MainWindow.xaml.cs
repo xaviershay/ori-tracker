@@ -100,7 +100,7 @@ namespace MapStitcher
                 $"{sourceDir}\\forlorn-3.png",
             };
             //var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
-            state.ClearJoins();
+            //state.ClearJoins();
             /*
             state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-3.png");
@@ -111,27 +111,21 @@ namespace MapStitcher
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
             {
-                state.Image(path);
-                return path;
-            });
-
-            var cropImagesBlock = new TransformBlock<string, string>(path =>
-            {
-                var task = new StitchTask($"Crop {System.IO.Path.GetFileName(path)}");
+                var task = new StitchTask($"Load and crop {System.IO.Path.GetFileName(path)}");
                 this.Dispatcher.Invoke(() => Tasks.Add(task));
-
-                // TODO: This is destructive, so that's probably bad in concurrent world?
-                var image = state.Image(path);
-                var originalSize = new Size(image.Width, image.Height);
-                int sideMargin = (int)(image.Width * 0.06); // The sides are darkened, so clip them out.
-                int topMargin = (int)(image.Height * 0.17);
-                int bottomMargin = (int)(image.Height * 0.10);
-                var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
-                image.Crop(bounds);
-                image.RePage();
-                Console.WriteLine("Crop done");
-
-                task.Complete(String.Format("{0} → {1}", originalSize, new Size(image.Width, image.Height)), false);
+                state.GetOrAddImage(path, () =>
+                {
+                    var image = new MagickImage(path);
+                    var originalSize = new Size(image.Width, image.Height);
+                    int sideMargin = (int)(image.Width * 0.06); // The sides are darkened, so clip them out.
+                    int topMargin = (int)(image.Height * 0.17);
+                    int bottomMargin = (int)(image.Height * 0.10);
+                    var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
+                    image.Crop(bounds);
+                    image.RePage();
+                    return image;
+                });
+                task.Complete("Done", false);
                 return path;
             }, blockOptions);
 
@@ -178,8 +172,7 @@ namespace MapStitcher
 
             var propagate = new DataflowLinkOptions { PropagateCompletion = true };
             var headBlock = loadFromDiskBlock;
-            headBlock.LinkTo(cropImagesBlock, propagate);
-            cropImagesBlock.LinkTo(broadcaster, propagate);
+            headBlock.LinkTo(broadcaster, propagate);
             broadcaster.LinkTo(gravities, propagate);
             gravities.LinkTo(findNeedleBlock, propagate);
 
@@ -206,7 +199,6 @@ namespace MapStitcher
                 Console.WriteLine("Pipeline Finished");
                 Dictionary<string, Point> completedJoins = new Dictionary<string, Point>();
 
-                //var remainingJoins = state.Joins.Where(x => sourceFiles.Contains(x.Image1)).GroupBy(k => k.Image1).ToDictionary(k => k.Key, v => v.ToList()).ToList();
                 var remainingJoins = new List<State.Join>(state.Joins);
                 var rejects = new List<State.Join>();
                 var images = new MagickImageCollection();
