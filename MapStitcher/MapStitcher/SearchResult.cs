@@ -2,7 +2,7 @@
 
 namespace MapStitcher
 {
-    public struct SearchResult
+    public class SearchResult
     {
         internal static readonly SearchResult Null = new SearchResult();
         public Point HaystackPoint;
