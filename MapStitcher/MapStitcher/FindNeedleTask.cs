@@ -57,16 +57,13 @@ namespace MapStitcher
 
         public void Run()
         {
-            var cached = false;
-            if (!state.NeedleExists(needle))
+            var cached = true;
+            this.searchResult = state.GetOrAddNeedle(needle, () =>
             {
-                searchResult = FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity, this);
-                state.AddNeedle(needle, searchResult);
-            } else
-            {
-                cached = true;
-                searchResult = state.GetNeedle(needle);
-            }
+                cached = false;
+                return FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity, this);
+            });
+
             var resultLabel = $"Not found ({searchResult.Entropy})";
             if (searchResult.MeetsThreshold())
             {

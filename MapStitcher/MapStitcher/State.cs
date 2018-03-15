@@ -36,15 +36,32 @@ namespace MapStitcher
         [JsonRequired]
         private ConcurrentDictionary<SearchKey, SearchResult> searchResults;
 
-        public SearchResult GetOrAddSearch(string haystack, NeedleKey needle, Func<SearchResult> p)
+        public SearchResult GetOrAddSearch(string haystack, NeedleKey needle, Func<SearchResult> f)
         {
             var cached = true;
             var result = searchResults.GetOrAdd(SearchKey.Create(haystack, needle), (key) =>
             {
                 cached = false;
-                var point = p.Invoke();
+                var point = f.Invoke();
                 return point;
             });
+            if (!cached)
+            {
+                NotifyChangeListeners();
+            }
+
+            return result;
+        }
+
+        public NeedleResult GetOrAddNeedle(NeedleKey needle, Func<NeedleResult> f)
+        {
+            var cached = true;
+            var result = needles.GetOrAdd(needle, (key) =>
+            {
+                cached = false;
+                return f.Invoke();
+            });
+
             if (!cached)
             {
                 NotifyChangeListeners();
@@ -147,14 +164,6 @@ namespace MapStitcher
             }
         }
 
-        public bool NeedleExists(NeedleKey needle)
-        {
-            lock (lockObject)
-            {
-                return needles.ContainsKey(needle);
-            }
-        }
-
         public NeedleResult GetNeedle(NeedleKey needle)
         {
             NeedleResult result = null;
@@ -174,16 +183,6 @@ namespace MapStitcher
 
                 //searchResults //RemoveWhere(x => x.Item1 == v1 && x.Item2.Key == v2);
             }
-        }
-
-        public void AddNeedle(NeedleKey needle, NeedleResult v)
-        {
-            lock (lockObject)
-            {
-                needles.TryAdd(needle, v);
-            }
-
-            NotifyChangeListeners();
         }
 
         private void NotifyChangeListeners()
