@@ -17,12 +17,18 @@ namespace MapStitcher
         public struct SearchResult
         {
             internal static readonly SearchResult Null = new SearchResult();
-            public Point? JoinPoint;
+            public Point? HaystackPoint;
+            public Point NeedlePoint;
             public double Distance;
 
             public bool MeetsThreshold()
             {
-                return JoinPoint.HasValue && Distance < 400;
+                return HaystackPoint.HasValue && Distance < 400;
+            }
+
+            internal Point Offset()
+            {
+                return new Point(HaystackPoint.Value.X - NeedlePoint.X, HaystackPoint.Value.Y - NeedlePoint.Y);
             }
         }
 
@@ -77,7 +83,11 @@ namespace MapStitcher
         {
             get
             {
-                return searchResults.Where(x => x.Value.MeetsThreshold()).Select(x => new Join() { Image1 = x.Key.Item1, Image2 = x.Key.Item2.Key, JoinPoint = x.Value.JoinPoint.Value });
+                return searchResults.Where(x => x.Value.MeetsThreshold()).Select(x => new Join() {
+                    Image1 = x.Key.Item1,
+                    Image2 = x.Key.Item2.Key,
+                    JoinPoint = x.Value.Offset()
+                });
                 /*
                 return joins.SelectMany(x => x.Value.SelectMany(y =>
                 {
@@ -122,23 +132,28 @@ namespace MapStitcher
             lock(lockObject)
             {
                 // This isn't very efficient, but going for correctness first
-                var blah = searchResults.FirstOrDefault(x => ((x.Key.Item1 == haystack && x.Key.Item2.Key == needle.Key) || (x.Key.Item1 == needle.Key && x.Key.Item2.Key == haystack)) && x.Value.JoinPoint.HasValue);
+                var blah = searchResults.FirstOrDefault(x => ((x.Key.Item1 == haystack && x.Key.Item2.Key == needle.Key) || (x.Key.Item1 == needle.Key && x.Key.Item2.Key == haystack)) && x.Value.HaystackPoint.HasValue);
 
                 if (blah.Key == null)
                 {
                     return null;
                 } else if (blah.Key.Item1 == haystack)
                 {
-                    return blah.Value.JoinPoint;
+                    return blah.Value.HaystackPoint;
                 } else if (blah.Key.Item1 == needle.Key)
                 {
-                    return Inverse(blah.Value.JoinPoint);
+                    return Inverse(blah.Value.HaystackPoint);
                 } else
                 {
                     // Shouldn't happen
                     return null;
                 }
             }
+        }
+
+        internal void ClearJoins()
+        {
+            this.searchResults.Clear();
         }
 
         public void Lock(Action<State> f)

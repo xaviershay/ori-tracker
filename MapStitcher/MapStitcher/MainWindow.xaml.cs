@@ -100,6 +100,7 @@ namespace MapStitcher
                 $"{sourceDir}\\forlorn-3.png",
             };
             //var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
+            state.ClearJoins();
             /*
             state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-3.png");
@@ -859,6 +860,8 @@ def finalize(existingAggregate):
 
                 Task.Run(() =>
                 {
+
+                    image1 = image1.Clone();
                     image2 = image2.Clone();
 
                     var images = new MagickImageCollection();

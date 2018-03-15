@@ -12,8 +12,6 @@ namespace MapStitcher
         private NeedleKey needle;
         private State state;
 
-        private Point? joinPoint;
-
         private IMagickImage NeedleImage;
         private int NeedleSize = 100; // TODO: DI this
         private State.SearchResult searchResult;
@@ -45,13 +43,14 @@ namespace MapStitcher
             this.searchResult = state.GetOrAddSearch(haystack, needle, () =>
             {
                 cached = false;
-                return FindAnchorInImage2(NeedleImage, needle.Gravity, state.Image(haystack), this);
+                var result = FindAnchorInImage2(NeedleImage, needle.Gravity, state.Image(haystack), this, anchor);
+                return result;
             });
 
             string resultLabel = $"Not found (best: {this.searchResult.Distance})";
             if (this.searchResult.MeetsThreshold())
             {
-                resultLabel = $"Found at ({this.searchResult.JoinPoint.Value}), distance {this.searchResult.Distance}";
+                resultLabel = $"Found at ({this.searchResult.HaystackPoint.Value}), distance {this.searchResult.Distance}";
             }
             Complete(resultLabel, cached);
         }
@@ -62,9 +61,9 @@ namespace MapStitcher
             {
                 var haystack = this.state.Image(this.haystack).Clone();
 
-                if (this.searchResult.JoinPoint.HasValue)
+                if (this.searchResult.HaystackPoint.HasValue)
                 {
-                    var joinPoint = this.searchResult.JoinPoint;
+                    var joinPoint = this.searchResult.HaystackPoint;
                     var x = joinPoint.Value.X;
                     var y = joinPoint.Value.Y;
 
@@ -79,7 +78,8 @@ namespace MapStitcher
             }
         }
 
-        private State.SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task)
+        // TODO: Name of this method + signature is a mess
+        private State.SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task, Point anchor)
         {
             // Resize needle 
             var magnification = Math.Min((double)8 / needleImage.Width, 1.0);
@@ -131,7 +131,8 @@ namespace MapStitcher
 
                 return new State.SearchResult() {
                     Distance = bestCandidate.Key,
-                    JoinPoint = new Point(bestCandidate.Value.X / magnification, bestCandidate.Value.Y / magnification)
+                    HaystackPoint = new Point(bestCandidate.Value.X / magnification, bestCandidate.Value.Y / magnification),
+                    NeedlePoint = anchor
                 };
 
             }
