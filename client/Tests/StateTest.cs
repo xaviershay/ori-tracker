@@ -16,7 +16,7 @@ namespace Tests
             var haystack = "image-1";
             var needle = new NeedleKey() { Key = "image-2", Gravity = ImageMagick.Gravity.North };
 
-            state.GetOrAddSearch(haystack, needle, () => new Point(5, 5));
+            state.GetOrAddSearch(haystack, needle, () => new State.SearchResult() { JoinPoint = new Point(5, 5), Distance = 0.1 });
 
             Assert.AreEqual(new Point(5, 5), state.GetJoin(haystack, needle));
             Assert.AreEqual(new Point(-5, -5), state.GetJoin(needle.Key, new NeedleKey() { Key = "image-1", Gravity = ImageMagick.Gravity.East }));

@@ -16,6 +16,7 @@ namespace MapStitcher
 
         private IMagickImage NeedleImage;
         private int NeedleSize = 100; // TODO: DI this
+        private State.SearchResult searchResult;
 
         public SearchTask(State state, string haystack, NeedleKey needle)
         {
@@ -41,16 +42,16 @@ namespace MapStitcher
             NeedleImage = needleImage;
 
             cached = true;
-            this.joinPoint = state.GetOrAddSearch(haystack, needle, () =>
+            this.searchResult = state.GetOrAddSearch(haystack, needle, () =>
             {
                 cached = false;
                 return FindAnchorInImage2(NeedleImage, needle.Gravity, state.Image(haystack), this);
             });
 
-            string resultLabel = "Not found";
-            if (this.joinPoint.HasValue)
+            string resultLabel = $"Not found (best: {this.searchResult.Distance})";
+            if (this.searchResult.MeetsThreshold())
             {
-                resultLabel = $"Found at ({this.joinPoint.Value})";
+                resultLabel = $"Found at ({this.searchResult.JoinPoint.Value}), distance {this.searchResult.Distance}";
             }
             Complete(resultLabel, cached);
         }
@@ -61,14 +62,15 @@ namespace MapStitcher
             {
                 var haystack = this.state.Image(this.haystack).Clone();
 
-                if (this.joinPoint.HasValue)
+                if (this.searchResult.JoinPoint.HasValue)
                 {
+                    var joinPoint = this.searchResult.JoinPoint;
                     var x = joinPoint.Value.X;
                     var y = joinPoint.Value.Y;
 
                     var rect = new Drawables()
                       .StrokeWidth(2)
-                      .StrokeColor(new MagickColor("yellow"))
+                      .StrokeColor(searchResult.MeetsThreshold() ? new MagickColor("green") : new MagickColor("yellow"))
                       .FillOpacity(new Percentage(0))
                       .Rectangle(x, y, x + NeedleSize, y + NeedleSize);
                     haystack.Draw(rect);
@@ -77,10 +79,10 @@ namespace MapStitcher
             }
         }
 
-        private Point? FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task)
+        private State.SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task)
         {
             // Resize needle 
-            var magnification = Math.Min((double)4 / needleImage.Width, 1.0);
+            var magnification = Math.Min((double)8 / needleImage.Width, 1.0);
 
             var resizeAmount = new Percentage(magnification * 100);
 
@@ -117,53 +119,23 @@ namespace MapStitcher
                         }
                     }
 
-                    var percentageDifference = sumOfDistance / totalComparisons;
+                    var averageDistance = sumOfDistance / totalComparisons;
 
-                    candidates.Add(percentageDifference, new Point(x, y));
+                    candidates.Add(averageDistance, new Point(x, y));
                 }
             }
-
-            /*
-            task.Preview = (renderer) =>
-            {
-                var preview = searchArea.Clone();
-
-                if (candidates.Count > 0)
-                {
-                    var max = candidates.Last().Key;
-                    var min = candidates.First().Key;
-
-                    foreach (var candidate in candidates.Take(1))
-                    {
-                        var x = candidate.Value.X;
-                        var y = candidate.Value.Y;
-                        var whiteAmount = (candidate.Key - min) / (max - min);
-//                        preview.Crop((int)x, (int)y, template.Width, template.Height);
-
-                        var rect = new Drawables()
-                          .FillColor(new MagickColor((byte)(255 * whiteAmount), 255, (byte)(255 * whiteAmount)))
-                          .FillOpacity(new Percentage(0.05))
-                          .Rectangle(x, y, x + template.Width, y + template.Height);
-                        preview.Draw(rect);
-                    }
-                }
-                renderer.DisplayImages(preview, template);
-            };
-            */
-
-            var threshold = 400; // TODO: What should this be?
 
             if (candidates.Count > 0)
             {
-                var bestPoint = candidates.First();
+                var bestCandidate = candidates.First();
 
-                if (bestPoint.Key < threshold)
-                {
-                    return new Point(bestPoint.Value.X / magnification, bestPoint.Value.Y / magnification);
-                } 
+                return new State.SearchResult() {
+                    Distance = bestCandidate.Key,
+                    JoinPoint = new Point(bestCandidate.Value.X / magnification, bestCandidate.Value.Y / magnification)
+                };
 
             }
-            return null;
+            return State.SearchResult.Null;
         }
 
         private List<List<System.Drawing.Color>> toPixels(IMagickImage image)

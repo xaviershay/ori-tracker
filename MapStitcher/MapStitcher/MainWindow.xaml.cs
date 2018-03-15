@@ -199,7 +199,7 @@ namespace MapStitcher
                 var haystack = t.Item1;
                 var needle = t.Item2;
 
-                if (haystack == needle.Key || state.GetNeedle(needle) == null || state.JoinExists(haystack, needle))
+                if (haystack == needle.Key || state.GetNeedle(needle) == null)
                 {
                     return haystack; // TODO: This doesn't mean anything
                 }

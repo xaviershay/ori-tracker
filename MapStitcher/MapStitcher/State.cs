@@ -16,7 +16,14 @@ namespace MapStitcher
     {
         public struct SearchResult
         {
+            internal static readonly SearchResult Null = new SearchResult();
             public Point? JoinPoint;
+            public double Distance;
+
+            public bool MeetsThreshold()
+            {
+                return JoinPoint.HasValue && Distance < 400;
+            }
         }
 
         public struct Join
@@ -40,21 +47,21 @@ namespace MapStitcher
         [JsonRequired]
         private ConcurrentDictionary<SearchKey, SearchResult> searchResults;
 
-        public Point? GetOrAddSearch(string haystack, NeedleKey needle, Func<Point?> p)
+        public SearchResult GetOrAddSearch(string haystack, NeedleKey needle, Func<SearchResult> p)
         {
             var cached = true;
             var result = searchResults.GetOrAdd(SearchKey.Create(haystack, needle), (key) =>
             {
                 cached = false;
                 var point = p.Invoke();
-                return new SearchResult { JoinPoint = point };
+                return point;
             });
             if (!cached)
             {
                 NotifyChangeListeners();
             }
 
-            return result.JoinPoint;
+            return result;
         }
 
         [JsonIgnore]
@@ -70,7 +77,7 @@ namespace MapStitcher
         {
             get
             {
-                return searchResults.Where(x => x.Value.JoinPoint.HasValue).Select(x => new Join() { Image1 = x.Key.Item1, Image2 = x.Key.Item2.Key, JoinPoint = x.Value.JoinPoint.Value });
+                return searchResults.Where(x => x.Value.MeetsThreshold()).Select(x => new Join() { Image1 = x.Key.Item1, Image2 = x.Key.Item2.Key, JoinPoint = x.Value.JoinPoint.Value });
                 /*
                 return joins.SelectMany(x => x.Value.SelectMany(y =>
                 {
