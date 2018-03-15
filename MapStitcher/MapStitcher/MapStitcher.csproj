@@ -68,6 +68,7 @@
   <ItemGroup>
     <Compile Include="Renderer.cs" />
     <Compile Include="SearchKey.cs" />
+    <Compile Include="SearchResult.cs" />
     <Compile Include="SearchTask.cs" />
     <Compile Include="StitchTask.cs" />
     <Compile Include="TickConverter.cs" />

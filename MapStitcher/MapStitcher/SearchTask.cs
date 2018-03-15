@@ -14,7 +14,7 @@ namespace MapStitcher
 
         private IMagickImage NeedleImage;
         private int NeedleSize = 100; // TODO: DI this
-        private State.SearchResult searchResult;
+        private SearchResult searchResult;
 
         public SearchTask(State state, string haystack, NeedleKey needle)
         {
@@ -61,7 +61,7 @@ namespace MapStitcher
             {
                 var haystack = this.state.Image(this.haystack).Clone();
 
-                if (this.searchResult.Distance < State.SearchResult.MAX_DISTANCE)
+                if (this.searchResult.Distance < SearchResult.MAX_DISTANCE)
                 {
                     var joinPoint = this.searchResult.HaystackPoint;
                     var x = joinPoint.X;
@@ -79,7 +79,7 @@ namespace MapStitcher
         }
 
         // TODO: Name of this method + signature is a mess
-        private State.SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task, Point anchor)
+        private SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task, Point anchor)
         {
             // Resize needle 
             var magnification = Math.Min((double)8 / needleImage.Width, 1.0);
@@ -129,14 +129,14 @@ namespace MapStitcher
             {
                 var bestCandidate = candidates.First();
 
-                return new State.SearchResult() {
+                return new SearchResult() {
                     Distance = bestCandidate.Key,
                     HaystackPoint = new Point(bestCandidate.Value.X / magnification, bestCandidate.Value.Y / magnification),
                     NeedlePoint = anchor
                 };
 
             }
-            return State.SearchResult.Null;
+            return SearchResult.Null;
         }
 
         private List<List<System.Drawing.Color>> toPixels(IMagickImage image)
