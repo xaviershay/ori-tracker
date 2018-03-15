@@ -5,7 +5,7 @@ namespace MapStitcher
 {
     internal class StitchTask : IProgress<double>, INotifyPropertyChanged
     {
-        public string Name { get; }
+        public string Name { get; protected set; }
         public double Progress { get; internal set; }
         public DateTime StartTime { get; internal set; }
         public DateTime? FinishTime { get; internal set; }
@@ -16,12 +16,17 @@ namespace MapStitcher
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        public StitchTask(string name)
+        public StitchTask(string name = "")
         {
             Name = name;
             Progress = 0.0;
             FinishTime = null;
             StartTime = DateTime.Now;
+        }
+        
+        public virtual void ShowPreview(Renderer renderer)
+        {
+
         }
 
         public void Complete(string result, bool cached)

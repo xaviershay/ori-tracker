@@ -66,6 +66,9 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Renderer.cs" />
+    <Compile Include="SearchKey.cs" />
+    <Compile Include="SearchTask.cs" />
     <Compile Include="StitchTask.cs" />
     <Compile Include="TickConverter.cs" />
     <Page Include="App.xaml">

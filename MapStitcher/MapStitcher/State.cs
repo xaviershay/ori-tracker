@@ -3,15 +3,22 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks.Dataflow;
 using System.Windows;
-using System.Linq;
-using System.IO;
 
 namespace MapStitcher
 {
     public class State
     {
+        public struct SearchResult
+        {
+            public Point? JoinPoint;
+        }
+
         public struct Join
         {
             public string Image1;
@@ -27,11 +34,28 @@ namespace MapStitcher
         [JsonRequired]
         private ConcurrentDictionary<NeedleKey, Point?> needles;
 
-        [JsonRequired]
-        private ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>> joins;
+        //[JsonRequired]
+        //private ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>> joins;
 
         [JsonRequired]
-        private HashSet<Tuple<string, NeedleKey>> negativeSearches;
+        private ConcurrentDictionary<SearchKey, SearchResult> searchResults;
+
+        public Point? GetOrAddSearch(string haystack, NeedleKey needle, Func<Point?> p)
+        {
+            var cached = true;
+            var result = searchResults.GetOrAdd(SearchKey.Create(haystack, needle), (key) =>
+            {
+                cached = false;
+                var point = p.Invoke();
+                return new SearchResult { JoinPoint = point };
+            });
+            if (!cached)
+            {
+                NotifyChangeListeners();
+            }
+
+            return result.JoinPoint;
+        }
 
         [JsonIgnore]
         private ConcurrentDictionary<string, IMagickImage> sources;
@@ -46,6 +70,8 @@ namespace MapStitcher
         {
             get
             {
+                return searchResults.Where(x => x.Value.JoinPoint.HasValue).Select(x => new Join() { Image1 = x.Key.Item1, Image2 = x.Key.Item2.Key, JoinPoint = x.Value.JoinPoint.Value });
+                /*
                 return joins.SelectMany(x => x.Value.SelectMany(y =>
                 {
                     if (y.Value.HasValue && x.Key.CompareTo(y.Key) <= 0)
@@ -56,6 +82,7 @@ namespace MapStitcher
                         return Enumerable.Empty<Join>();
                     }
                 }));
+                */
             }
         }
 
@@ -63,9 +90,8 @@ namespace MapStitcher
         {
             ChangeListener = DataflowBlock.NullTarget<State>();
             needles = new ConcurrentDictionary<NeedleKey, Point?>();
-            joins = new ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>>();
             sources = new ConcurrentDictionary<string, IMagickImage>();
-            negativeSearches = new HashSet<Tuple<string, NeedleKey>>();
+            searchResults = new ConcurrentDictionary<SearchKey, SearchResult>();
         }
 
         public void ClearNeedle(NeedleKey key)
@@ -80,59 +106,32 @@ namespace MapStitcher
 
         public bool JoinExists(string haystack, NeedleKey needle)
         {
-            lock (lockObject)
-            {
-                return negativeSearches.Contains(Tuple.Create(haystack, needle)) || JoinsFor(haystack).ContainsKey(needle.Key) || JoinsFor(needle.Key).ContainsKey(haystack);
-            }
+            return GetJoin(haystack, needle) != null;
         }
 
         public Point? GetJoin(string haystack, NeedleKey needle)
         {
+            var key = Tuple.Create(haystack, needle);
             lock(lockObject)
             {
-                Point? result = null;
+                // This isn't very efficient, but going for correctness first
+                var blah = searchResults.FirstOrDefault(x => ((x.Key.Item1 == haystack && x.Key.Item2.Key == needle.Key) || (x.Key.Item1 == needle.Key && x.Key.Item2.Key == haystack)) && x.Value.JoinPoint.HasValue);
 
-                if (negativeSearches.Contains(Tuple.Create(haystack, needle)))
+                if (blah.Key == null)
                 {
-                    result = null;
-                } else if (JoinsFor(haystack).ContainsKey(needle.Key))
+                    return null;
+                } else if (blah.Key.Item1 == haystack)
                 {
-                    JoinsFor(haystack).TryGetValue(needle.Key, out result);
-                } else if (JoinsFor(needle.Key).ContainsKey(haystack))
+                    return blah.Value.JoinPoint;
+                } else if (blah.Key.Item1 == needle.Key)
                 {
-                    JoinsFor(needle.Key).TryGetValue(haystack, out result);
-                }
-                return result;
-            }
-        }
-
-
-        public void AddJoinPoint(string haystack, NeedleKey needle, Point? joinPoint, Point needleAnchor)
-        {
-            // A positive result should be cached as "Connect image1 to image2". Once we have a join, we don't care about the needle/gravity anymore
-            // A negative result should be cached as "Couldn't find something with this NeedleKey, but maybe might find something later"
-            // For now just going to not cache negative results
-            Point? point = null;
-            if (joinPoint.HasValue)
-            {
-                point = new Point(joinPoint.Value.X - needleAnchor.X, joinPoint.Value.Y - needleAnchor.Y);
-
-                Console.WriteLine("jp: {0}, anchor: {1}, offset: {2}", joinPoint, needleAnchor, point);
-                lock (lockObject)
+                    return Inverse(blah.Value.JoinPoint);
+                } else
                 {
-                    JoinsFor(haystack).TryAdd(needle.Key, point);
-                    JoinsFor(needle.Key).TryAdd(haystack, Inverse(point));
-                }
-            } else
-            {
-                lock (lockObject)
-                {
-                    negativeSearches.Add(Tuple.Create(haystack, needle));
+                    // Shouldn't happen
+                    return null;
                 }
             }
-
-
-            NotifyChangeListeners();
         }
 
         public void Lock(Action<State> f)
@@ -165,12 +164,15 @@ namespace MapStitcher
 
         public void ClearJoin(string v1, string v2)
         {
+            throw new ArgumentException("Unimplemented");
             lock (lockObject)
             {
+                /*
                 JoinsFor(v1).TryRemove(v2, out _);
                 JoinsFor(v2).TryRemove(v1, out _);
+                */
 
-                negativeSearches.RemoveWhere(x => x.Item1 == v1 && x.Item2.Key == v2);
+                //searchResults //RemoveWhere(x => x.Item1 == v1 && x.Item2.Key == v2);
             }
         }
 
@@ -200,9 +202,11 @@ namespace MapStitcher
             }
         }
 
+        /*
         private ConcurrentDictionary<string, Point?> JoinsFor(string key)
         {
             return joins.GetOrAdd(key, _ => new ConcurrentDictionary<string, Point?>());
         }
+        */
     }
 }
