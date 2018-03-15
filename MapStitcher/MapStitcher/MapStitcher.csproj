@@ -66,6 +66,8 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FindNeedleTask.cs" />
+    <Compile Include="NeedleResult.cs" />
     <Compile Include="Renderer.cs" />
     <Compile Include="SearchKey.cs" />
     <Compile Include="SearchResult.cs" />

@@ -8,6 +8,12 @@ namespace MapStitcher
 {
     public static class LinqExtensions
     {
+
+        public static List<int> FromTo(int from, int to)
+        {
+            return Enumerable.Range(from, to - from).ToList();
+        }
+
         public static IEnumerable<T> OrderFromCenter<T>(this IEnumerable<T> source)
         {
             var middle = source.Count() / 2;

@@ -28,7 +28,12 @@ namespace MapStitcher
         {
             var cached = false;
 
-            Point? potentialAnchor = state.GetNeedle(needle);
+            var needleResult = state.GetNeedle(needle);
+            Point? potentialAnchor = null;
+            if (needleResult.MeetsThreshold())
+            {
+                potentialAnchor = needleResult.Point;
+            }
 
             if (!potentialAnchor.HasValue)
             {
@@ -142,12 +147,7 @@ namespace MapStitcher
         private List<List<System.Drawing.Color>> toPixels(IMagickImage image)
         {
             var pixels = image.GetPixels();
-            return FromTo(0, image.Height).Select(y => FromTo(0, image.Width).Select(x => pixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
-        }
-
-        public List<int> FromTo(int from, int to)
-        {
-            return Enumerable.Range(from, to - from).ToList();
+            return LinqExtensions.FromTo(0, image.Height).Select(y => LinqExtensions.FromTo(0, image.Width).Select(x => pixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
         }
 
         private double PixelDistance(System.Drawing.Color a, System.Drawing.Color b)

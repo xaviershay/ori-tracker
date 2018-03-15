@@ -28,7 +28,7 @@ namespace MapStitcher
         }
 
         [JsonRequired]
-        private ConcurrentDictionary<NeedleKey, Point?> needles;
+        private ConcurrentDictionary<NeedleKey, NeedleResult> needles;
 
         //[JsonRequired]
         //private ConcurrentDictionary<string, ConcurrentDictionary<string, Point?>> joins;
@@ -89,7 +89,7 @@ namespace MapStitcher
         public State()
         {
             ChangeListener = DataflowBlock.NullTarget<State>();
-            needles = new ConcurrentDictionary<NeedleKey, Point?>();
+            needles = new ConcurrentDictionary<NeedleKey, NeedleResult>();
             sources = new ConcurrentDictionary<string, IMagickImage>();
             searchResults = new ConcurrentDictionary<SearchKey, SearchResult>();
         }
@@ -155,16 +155,11 @@ namespace MapStitcher
             }
         }
 
-        public Point? GetNeedle(NeedleKey needle)
+        public NeedleResult GetNeedle(NeedleKey needle)
         {
-            Point? result = null;
-            if (needles.TryGetValue(needle, out result))
-            {
-                return result;
-            } else
-            {
-                return null;
-            }
+            NeedleResult result = null;
+            needles.TryGetValue(needle, out result);
+            return result;
         }
 
         public void ClearJoin(string v1, string v2)
@@ -181,7 +176,7 @@ namespace MapStitcher
             }
         }
 
-        public void AddNeedle(NeedleKey needle, Point? v)
+        public void AddNeedle(NeedleKey needle, NeedleResult v)
         {
             lock (lockObject)
             {

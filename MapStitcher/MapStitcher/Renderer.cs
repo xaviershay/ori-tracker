@@ -18,6 +18,12 @@ namespace MapStitcher
         }
         internal void DisplayImages(params IMagickImage[] magickImages)
         {
+            // TODO: This method can be called concurrently and probably needs some locking.
+            //       Dispatching for each change to viewer.Source is also gross.
+            foreach (var viewer in viewers)
+            {
+                viewer.Dispatcher.Invoke(() => viewer.Source = null);
+            }
             foreach (var t in viewers.Zip(magickImages, (a, b) => Tuple.Create(a, b)))
             {
                 DisplayImage(t.Item1, t.Item2);

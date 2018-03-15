@@ -60,8 +60,8 @@ namespace MapStitcher
             AppState = state;
 
 
-            var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
-            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
+            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
+            var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
             var snapshotState = new ActionBlock<State>((s) =>
             {
                 var content = "";
@@ -142,56 +142,9 @@ namespace MapStitcher
 
             var findNeedleBlock = new TransformBlock<NeedleKey, NeedleKey>(needle =>
             {
-                Point? result = null;
-                var cached = false;
-                var task = new StitchTask($"Finding needle at {needle}");
+                var task = new FindNeedleTask(state, needle);
                 this.Dispatcher.Invoke(() => Tasks.Add(task));
-                if (!state.NeedleExists(needle))
-                {
-                    result = FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity, task);
-                    state.AddNeedle(needle, result);
-                } else
-                {
-                    cached = true;
-                    result = state.GetNeedle(needle);
-                    task.Preview = () =>
-                    {
-                        var image = state.Image(needle.Key).Clone();
-                        var searchArea = NeedleSearchArea(image, needle.Gravity);
-                        var rows = searchArea.Item1;
-                        var columns = searchArea.Item2;
-
-                        var minX = columns.Min();
-                        var maxX = columns.Max();
-                        var minY = rows.Min();
-                        var maxY = rows.Max();
-
-                        var preview = image;
-                        var rect = new Drawables()
-                          .StrokeWidth(2)
-                          .StrokeColor(new MagickColor("yellow"))
-                          .FillOpacity(new Percentage(0))
-                          .Rectangle(minX, minY, maxX, maxY);
-                        preview.Draw(rect);
-
-                        if (result.HasValue)
-                        {
-                            var needleRect = new Drawables()
-                              .StrokeWidth(2)
-                              .StrokeColor(new MagickColor("red"))
-                              .FillOpacity(new Percentage(0))
-                              .Rectangle(result.Value.X, result.Value.Y, result.Value.X + NeedleSize, result.Value.Y + NeedleSize);
-                            preview.Draw(needleRect);
-                        }
-                        DisplayImage(Viewer, preview);
-                    };
-                }
-                var resultLabel = "Not found";
-                if (result.HasValue)
-                {
-                    resultLabel = $"Found at ({result})";
-                }
-                task.Complete(resultLabel, cached);
+                task.Run();
                 return needle;
             }, blockOptions);
 
@@ -200,7 +153,7 @@ namespace MapStitcher
                 var haystack = t.Item1;
                 var needle = t.Item2;
 
-                if (haystack == needle.Key || state.GetNeedle(needle) == null)
+                if (haystack == needle.Key || !state.GetNeedle(needle).MeetsThreshold())
                 {
                     return haystack; // TODO: This doesn't mean anything
                 }
@@ -216,43 +169,6 @@ namespace MapStitcher
                 this.Dispatcher.Invoke(() => Tasks.Add(task));
 
                 task.Run();
-                /*
-                if (!state.JoinExists(haystack, needle))
-                {
-                    Point? potentialAnchor = state.GetNeedle(needle);
-
-                    if (!potentialAnchor.HasValue)
-                    {
-                        Console.WriteLine("No needle exists for {0}, so no join possible", needle);
-                        task.Complete("Needle doesn't exist", true);
-                        return null;
-                    }
-
-                    var anchor = potentialAnchor.Value;
-
-                    var needleImage = state.Image(needle.Key).Clone();
-                    needleImage.Crop((int)anchor.X, (int)anchor.Y, NeedleSize, NeedleSize);
-
-
-                    //DisplayImage(Viewer, state.Image(haystack));
-                    //DisplayImage(Viewer2, needleViewImage);
-                    Console.WriteLine("Searching for {0} in {1}", needle, System.IO.Path.GetFileName(haystack));
-                    result = FindAnchorInImage2(needleImage, needle.Gravity, state.Image(haystack), task);
-
-                    state.AddJoinPoint(haystack, needle, result, anchor);
-
-                } else
-                {
-                    cached = true;
-                    result = state.GetJoin(haystack, needle);
-                }
-                string resultLabel = "Not found";
-                if (result.HasValue)
-                {
-                    resultLabel = $"Found at ({result.Value})";
-                }
-                task.Complete(resultLabel, cached);
-                */
 
                 return haystack; // TODO: Figure out best thing to propagate. Maybe when match found?
             }, blockOptions);
@@ -394,6 +310,7 @@ namespace MapStitcher
             }
             return retour;
         }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -411,402 +328,6 @@ namespace MapStitcher
                 }
             };
             Task.Run(() => DoNetwork());
-        }
-
-        private string keyForImage(string v, object image1, object image2 = null)
-        {
-            var ret = $"{v}-{image1.GetHashCode()}";
-            if (image2 != null)
-            {
-                ret += $"-{image2.GetHashCode()}";
-            }
-            return ret;
-        }
-
-        private async Task<T> cache<T>(string key, Func<T> f)
-        {
-            var loadedInstance = await PersistentObjectCache.GetObjectAsync<T>(key);
-            if (loadedInstance != null && !loadedInstance.Equals(default(T)))
-            {
-                Console.WriteLine("HIT: " + key);
-                return loadedInstance;
-            } else
-            {
-                Console.WriteLine("MISS: " + key);
-                var result = f.Invoke();
-                await PersistentObjectCache.SetObjectAsync(key, result);
-                return result;
-            }
-        }
-
-
-        private Point? FindAnchorInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack, StitchTask task)
-        {
-            IProgress<double> progress = task;
-            haystack = haystack.Clone();
-            needleImage = needleImage.Clone();
-
-            haystack.Resize(new Percentage(25));
-            needleImage.Resize(new Percentage(25));
-
-            var pixels = haystack.GetPixels();
-            var needle = needleImage.GetPixels().Select(i => i.ToColor()).ToList();
-            var searchArea = HaystackSearchArea(haystack, Opposite(needleGravity));
-            var rows = searchArea.Item1;
-            var columns = searchArea.Item2;
-
-            /*
-            rows = FromTo(500, 600);
-            columns = FromTo(200, 300);
-            */
-            var minY = rows.Min();
-            var maxY = rows.Max();
-
-            var minX = columns.Min();
-            var maxX = columns.Max();
-
-            var imageDimensions = Tuple.Create(haystack.Width, haystack.Height);
-
-            task.Preview = () =>
-            {
-                var previewImage = haystack.Clone();
-
-                var rect = new Drawables()
-                  .StrokeColor(new MagickColor("yellow"))
-                  .StrokeWidth(2)
-                  .FillOpacity(new Percentage(10))
-                  .Rectangle(minX, minY, maxX, maxY);
-                previewImage.Draw(rect);
-                DisplayImage(Viewer, previewImage);
-                DisplayImage(Viewer2, needleImage);
-            };
-
-            var needlePixels = needleImage.GetPixels();
-            List<List<System.Drawing.Color>> needleGrid = FromTo(0, needleImage.Height).Select(y => FromTo(0, needleImage.Width).Select(x => needlePixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
-            List<List<System.Drawing.Color>> pixelGrid = FromTo(minY, maxY).Select(y => FromTo(minX, maxX).Select(x => pixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
-
-            var gridWidth = maxX - minX;
-            var gridHeight = maxY - minY;
-
-            /*
-            var displayHaystack = haystack.Clone();
-            displayHaystack.Crop(minX, minY, maxX - minX, maxY - minY);
-            DisplayImage(Viewer, displayHaystack);
-            DisplayImage(Viewer2, needleImage);
-            */
-
-            double totalCycles = rows.Count() * columns.Count();
-            double currentCycle = 0;
-
-            foreach (var y in rows)
-            {
-                progress.Report(currentCycle / totalCycles);
-
-                foreach (var x in columns)
-                {
-                    currentCycle++;
-
-                    if (y - minY + NeedleSize >= gridHeight)
-                    {
-                        continue;
-                    }
-
-                    if (x - minX + NeedleSize >= gridWidth)
-                    {
-                        continue;
-                    }
-
-                    var found = true;
-                    var matches = 0;
-
-                    for (var x2 = x - minX; x2 < x - minX + NeedleSize && found; x2++)
-                    {
-                        for (var y2 = y - minY; y2 < y - minY + NeedleSize && found; y2++)
-                        {
-                            var needlePixel = needleGrid[y2 - (y - minY)][x2 - (x - minX)];
-                            var haystackPixel = pixelGrid[y2][x2];
-
-                            if (!FuzzyEquals(needlePixel, haystackPixel, Math.Pow(255 * 0.15, 2)))
-                            {
-                                //found = false;
-                            } else
-                            {
-                                matches++;
-                            }
-                        }
-                    }
-
-                    if (matches / Math.Pow(NeedleSize, 2) > 0.80)
-                    {
-                        progress.Report(1.0);
-                        var ret = new Point(x, y);
-                        Console.WriteLine($"FOUND MATCH: ({x}, {y})");
-
-                        task.Preview = () =>
-                        {
-                            var previewImage = haystack.Clone();
-                            previewImage.Crop(x, y, NeedleSize, NeedleSize);
-                            DisplayImage(Viewer, previewImage);
-                            DisplayImage(Viewer2, needleImage);
-                        };
-                        return ret;
-                    }
-                }
-            }
-            progress.Report(1.0);
-            return null;
-        }
-
-        private bool FuzzyEquals(System.Drawing.Color a, System.Drawing.Color b, double thresholdSquared)
-        {
-            var vectorDistanceSquared = Math.Pow((a.R - b.R), 2) + Math.Pow(a.G - b.G, 2) + Math.Pow(a.B - b.B, 2);
-            return vectorDistanceSquared <= thresholdSquared;
-        }
-
-        private double PixelDistance(System.Drawing.Color a, System.Drawing.Color b)
-        {
-            return Math.Pow((a.R - b.R), 2) + Math.Pow(a.G - b.G, 2) + Math.Pow(a.B - b.B, 2);
-        }
-
-        private Gravity Opposite(Gravity gravity)
-        {
-            switch (gravity)
-            {
-                case Gravity.North: return Gravity.South;
-                case Gravity.South: return Gravity.North;
-                case Gravity.East: return Gravity.West;
-                case Gravity.West: return Gravity.East;
-                default: throw new ArgumentException($"Unhandled gravity: {gravity}");
-            }
-        }
-
-        public List<int> FromTo(int from, int to)
-        {
-            return Enumerable.Range(from, to - from).ToList();
-        }
-
-        private Tuple<List<int>, List<int>> NeedleSearchArea(IMagickImage image, Gravity gravity)
-        {
-            var verticalMargin = image.Height / 4;
-            var horizontalMargin = image.Height / 4;
-
-            switch (gravity)
-            {
-                case Gravity.South:
-                    return Tuple.Create(
-                      FromTo(image.Height - verticalMargin, image.Height).AsEnumerable().Reverse().ToList(),
-                      FromTo(horizontalMargin, image.Width - horizontalMargin).OrderFromCenter().ToList()
-                    );
-                case Gravity.North:
-                    return Tuple.Create(
-                        FromTo(0, verticalMargin).ToList(),
-                        FromTo(horizontalMargin, image.Width - horizontalMargin).OrderFromCenter().ToList()
-                    );
-                case Gravity.East:
-                    return Tuple.Create(
-                        FromTo(verticalMargin, image.Height - verticalMargin).OrderFromCenter().ToList(),
-                        FromTo(image.Width - horizontalMargin, image.Width).AsEnumerable().Reverse().ToList()
-                    );
-                case Gravity.West:
-                    return Tuple.Create(
-                        FromTo(verticalMargin, image.Height - verticalMargin).OrderFromCenter().ToList(),
-                        FromTo(0, horizontalMargin).ToList()
-                    );
-                default:
-                    throw new ArgumentException($"Unhandled gravity: {gravity}");
-            }
-        }
-
-        private Tuple<List<int>, List<int>> HaystackSearchArea(IMagickImage image, Gravity gravity)
-        {
-            switch (gravity)
-            {
-                case Gravity.South:
-                    return Tuple.Create(
-                      FromTo(image.Height / 2, image.Height).AsEnumerable().Reverse().ToList(),
-                      FromTo(0, image.Width).OrderFromCenter().ToList()
-                    );
-                case Gravity.North:
-                    return Tuple.Create(
-                        FromTo(0, image.Height / 2).ToList(),
-                        FromTo(0, image.Width).OrderFromCenter().ToList()
-                    );
-                case Gravity.East:
-                    return Tuple.Create(
-                        FromTo(0, image.Height).OrderFromCenter().ToList(),
-                        FromTo(image.Width / 2, image.Width).AsEnumerable().Reverse().ToList()
-                    );
-                case Gravity.West:
-                    return Tuple.Create(
-                        FromTo(0, image.Height).OrderFromCenter().ToList(),
-                        FromTo(0, image.Width / 2).ToList()
-                    );
-                default:
-                    throw new ArgumentException($"Unhandled gravity: {gravity}");
-            }
-        }
-
-        private Point? FindHighEntropyStrip(IMagickImage image, Gravity gravity, StitchTask task)
-        {
-            IProgress<double> progress = task;
-            var pixels = image.GetPixels();
-
-            var t1 = DateTime.UtcNow;
-
-            IEnumerable<int> rows = null;
-            IEnumerable<int> columns = null;
-
-            Debug.Assert(image.Height > 1 && image.Width > 1, "Assumes non-empty image");
-            Debug.Assert(image.Width >= NeedleSize, "Assumes image is at least as big as needle size");
-
-            var searchArea = NeedleSearchArea(image, gravity);
-            rows = searchArea.Item1;
-            columns = searchArea.Item2;
-
-            var minY = rows.Min();
-            var maxY = rows.Max();
-
-            var minX = columns.Min();
-            var maxX = columns.Max();
-            var imageDimensions = Tuple.Create(image.Width, image.Height);
-
-            task.Preview = () =>
-            {
-                var preview = image.Clone();
-                var rect = new Drawables()
-                  .StrokeWidth(2)
-                  .StrokeColor(new MagickColor("yellow"))
-                  .FillOpacity(new Percentage(0))
-                  .Rectangle(minX, minY, maxX, maxY);
-                preview.Draw(rect);
-                DisplayImage(Viewer, preview);
-            };
-
-            List<List<Pixel>> pixelGrid = FromTo(minY, maxY).Select(y => FromTo(minX, maxX).Select(x => pixels.GetPixel(x, y)).ToList()).ToList();
-            List<List<float>> brightnessGrid = pixelGrid.Select(xs => xs.Select(p => p.ToColor().ToColor().GetBrightness()).ToList()).ToList();
-
-            var gridWidth = maxX - minX;
-            var gridHeight = maxY - minY;
-
-            var bestNeedleStddev = 0.0;
-            Point? bestNeedle = null;
-
-            double totalCycles = rows.Count() * columns.Count();
-            double currentCycle = 0;
-
-            foreach (var y in rows)
-            {
-                foreach (var x in columns)
-                {
-                    progress.Report(currentCycle / totalCycles);
-                    currentCycle++;
-                    if (y - minY + NeedleSize >= gridHeight)
-                    {
-                        continue;
-                    }
-
-                    if (x - minX + NeedleSize >= gridWidth)
-                    {
-                        continue;
-                    }
-
-                    var count = 0;
-                    var mean = 0.0;
-                    var m2 = 0.0;
-                    /*
-  def update(existingAggregate, newValue):
-    (count, mean, M2) = existingAggregate
-    count = count + 1 
-    delta = newValue - mean
-    mean = mean + delta / count
-    delta2 = newValue - mean
-    M2 = M2 + delta * delta2
-
-    return (count, mean, M2)
-
-# retrieve the mean and variance from an aggregate
-def finalize(existingAggregate):
-    (count, mean, M2) = existingAggregate
-    (mean, variance) = (mean, M2/(count - 1)) 
-    if count < 2:
-        return float('nan')
-    else:
-        return (mean, variance)
-        */
-                    for (var x2 = x - minX; x2 < x - minX + NeedleSize; x2++)
-                    {
-                        for (var y2 = y - minY; y2 < y - minY + NeedleSize; y2++)
-                        {
-                            var b = brightnessGrid[y2][x2];
-
-                            count++;
-                            var delta = b - mean;
-                            mean = mean + delta / count;
-                            var delta2 = b - mean;
-                            m2 = m2 + delta * delta2;
-                        }
-                    }
-                    var variance = m2 / (count - 1);
-                    //var swatch = brightnessGrid.GetRange(y, NeedleSize).Select(xs => xs.GetRange(x, NeedleSize)).SelectMany(xs => xs);
-                    //var averageBrightness = swatch.Average();
-                    //var sum = swatch.Sum(a => Math.Pow(a - averageBrightness, 2));
-                    //var stddev = Math.Sqrt(sum / (swatch.Count() - 1));
-                    var stddev = variance;
-
-                    if (stddev > bestNeedleStddev)
-                    {
-                        bestNeedleStddev = stddev;
-                        bestNeedle = new Point(x, y);
-                    }
-                    /*
-                    var swatchBrightness = 
-                    var brightness = Enumerable.Range(x - columns.Min(), NeedleSize).Select(i => pixelStrip.ElementAt(i));
-
-                    var avg = brightness.Average();
-                    if (avg > 0.3)
-                    {
-                        double sum = brightness.Sum(a => Math.Pow(a - avg, 2));
-                        var ret = Math.Sqrt((sum) / (brightness.Count() - 1));
-                        Console.WriteLine(ret);
-                        if (ret > 0.10)
-                        {
-                            var r = new Point(x, y);
-                            Console.WriteLine($"({x}, {y}): {r}");
-                            Console.WriteLine(string.Join(",", brightness.ToList()));
-                            var t2 = DateTime.UtcNow;
-                            Console.WriteLine(t2 - t1);
-                            return r;
-                        }
-                    }
-                    */
-                }
-            }
-            if (bestNeedle.HasValue && bestNeedleStddev > 0.03)
-            {
-                Console.WriteLine("Found: {0} @ {1} for {2}", bestNeedle.Value, bestNeedleStddev, gravity);
-                task.Preview = () =>
-                {
-                    var preview = image.Clone();
-                    var rect = new Drawables()
-                      .StrokeWidth(2)
-                      .StrokeColor(new MagickColor("yellow"))
-                      .FillOpacity(new Percentage(0))
-                      .Rectangle(minX, minY, maxX, maxY);
-                    preview.Draw(rect);
-
-                    var needleRect = new Drawables()
-                      .StrokeWidth(2)
-                      .StrokeColor(new MagickColor("red"))
-                      .FillOpacity(new Percentage(0))
-                      .Rectangle(bestNeedle.Value.X, bestNeedle.Value.Y, bestNeedle.Value.X + NeedleSize, bestNeedle.Value.Y + NeedleSize);
-                    preview.Draw(needleRect);
-                    DisplayImage(Viewer, preview);
-                };
-                return bestNeedle;
-            } else
-            {
-                return null;
-            }
         }
 
         private void Viewer_MouseMove(object sender, MouseEventArgs e)
@@ -827,7 +348,7 @@ def finalize(existingAggregate):
                 {
                     image = image.Clone();
                     Task.Run(() => {
-                        var needles = allGravities.Select(x => AppState.GetNeedle(new NeedleKey { Key = selected, Gravity = x })).Where(x => x.HasValue).Select(x => x.Value);
+                        var needles = allGravities.Select(x => AppState.GetNeedle(new NeedleKey { Key = selected, Gravity = x })).Where(x => x.MeetsThreshold()).Select(x => x.Point);
                         foreach (var needlePoint in needles)
                         {
                             var rect = new Drawables()
