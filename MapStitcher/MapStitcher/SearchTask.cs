@@ -50,7 +50,7 @@ namespace MapStitcher
             string resultLabel = $"Not found (best: {this.searchResult.Distance})";
             if (this.searchResult.MeetsThreshold())
             {
-                resultLabel = $"Found at ({this.searchResult.HaystackPoint.Value}), distance {this.searchResult.Distance}";
+                resultLabel = $"Found at ({this.searchResult.HaystackPoint}), distance {this.searchResult.Distance}";
             }
             Complete(resultLabel, cached);
         }
@@ -61,11 +61,11 @@ namespace MapStitcher
             {
                 var haystack = this.state.Image(this.haystack).Clone();
 
-                if (this.searchResult.HaystackPoint.HasValue)
+                if (this.searchResult.Distance < State.SearchResult.MAX_DISTANCE)
                 {
                     var joinPoint = this.searchResult.HaystackPoint;
-                    var x = joinPoint.Value.X;
-                    var y = joinPoint.Value.Y;
+                    var x = joinPoint.X;
+                    var y = joinPoint.Y;
 
                     var rect = new Drawables()
                       .StrokeWidth(2)

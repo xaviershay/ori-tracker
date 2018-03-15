@@ -17,18 +17,20 @@ namespace MapStitcher
         public struct SearchResult
         {
             internal static readonly SearchResult Null = new SearchResult();
-            public Point? HaystackPoint;
+            public Point HaystackPoint;
             public Point NeedlePoint;
             public double Distance;
 
+            public static double MAX_DISTANCE = 100000000.0;
+
             public bool MeetsThreshold()
             {
-                return HaystackPoint.HasValue && Distance < 400;
+                return Distance < 400;
             }
 
             internal Point Offset()
             {
-                return new Point(HaystackPoint.Value.X - NeedlePoint.X, HaystackPoint.Value.Y - NeedlePoint.Y);
+                return new Point(HaystackPoint.X - NeedlePoint.X, HaystackPoint.Y - NeedlePoint.Y);
             }
         }
 
@@ -132,7 +134,7 @@ namespace MapStitcher
             lock(lockObject)
             {
                 // This isn't very efficient, but going for correctness first
-                var blah = searchResults.FirstOrDefault(x => ((x.Key.Item1 == haystack && x.Key.Item2.Key == needle.Key) || (x.Key.Item1 == needle.Key && x.Key.Item2.Key == haystack)) && x.Value.HaystackPoint.HasValue);
+                var blah = searchResults.FirstOrDefault(x => ((x.Key.Item1 == haystack && x.Key.Item2.Key == needle.Key) || (x.Key.Item1 == needle.Key && x.Key.Item2.Key == haystack)));
 
                 if (blah.Key == null)
                 {
