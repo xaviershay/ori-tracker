@@ -4,7 +4,10 @@ namespace MapStitcher
 {
     public class SearchResult
     {
-        internal static readonly SearchResult Null = new SearchResult();
+        public static SearchResult Null
+        {
+            get { return new SearchResult() { Distance = MAX_DISTANCE }; }
+        }
         public Point HaystackPoint;
         public Point NeedlePoint;
         public double Distance;
@@ -13,7 +16,7 @@ namespace MapStitcher
 
         public bool MeetsThreshold()
         {
-            return Distance < 400;
+            return Distance < 800;
         }
 
         internal Point Offset()

@@ -61,7 +61,15 @@ namespace MapStitcher
             this.searchResult = state.GetOrAddNeedle(needle, () =>
             {
                 cached = false;
-                return FindHighEntropyStrip(state.Image(needle.Key), needle.Gravity, this);
+                var image = state.Image(needle.Key).Clone();
+                var magnification = 0.2;
+                image.Resize(new Percentage(magnification * 100));
+
+                var result = FindHighEntropyStrip(image, needle.Gravity, NeedleSize * magnification, this);
+
+                result.Point.X /= magnification;
+                result.Point.Y /= magnification;
+                return result;
             });
 
             var resultLabel = $"Not found ({searchResult.Entropy})";
@@ -72,7 +80,7 @@ namespace MapStitcher
             Complete(resultLabel, cached);
         }
 
-        private NeedleResult FindHighEntropyStrip(IMagickImage image, Gravity gravity, StitchTask task)
+        private NeedleResult FindHighEntropyStrip(IMagickImage image, Gravity gravity, double NeedleSize, StitchTask task)
         {
             IProgress<double> progress = task;
             var pixels = image.GetPixels();
@@ -108,6 +116,7 @@ namespace MapStitcher
             double totalCycles = rows.Count() * columns.Count();
             double currentCycle = 0;
 
+            Console.WriteLine(brightnessGrid);
             foreach (var y in rows)
             {
                 foreach (var x in columns)
@@ -127,11 +136,18 @@ namespace MapStitcher
                     var count = 0;
                     var mean = 0.0;
                     var m2 = 0.0;
+                    double blackCount = 0.0;
                     for (var x2 = x - minX; x2 < x - minX + NeedleSize; x2++)
                     {
                         for (var y2 = y - minY; y2 < y - minY + NeedleSize; y2++)
                         {
                             var b = brightnessGrid[y2][x2];
+                            var p = pixelGrid[y2][x2].ToColor();
+                            
+                            if (b < 0.08)
+                            {
+                                blackCount++;
+                            }
 
                             count++;
                             var delta = b - mean;
@@ -143,7 +159,8 @@ namespace MapStitcher
                     var variance = m2 / (count - 1);
                     var stddev = variance;
 
-                    if (stddev > bestNeedleStddev)
+                    //Console.WriteLine("{0}, {1}, {2}", blackCount, NeedleSize * NeedleSize, blackCount / (NeedleSize * NeedleSize));
+                    if (stddev > bestNeedleStddev && blackCount / (NeedleSize * NeedleSize) < 0.5)
                     {
                         bestNeedleStddev = stddev;
                         bestNeedle = new Point(x, y);
@@ -156,7 +173,7 @@ namespace MapStitcher
         private Tuple<List<int>, List<int>> NeedleSearchArea(IMagickImage image, Gravity gravity)
         {
             var verticalMargin = image.Height / 4;
-            var horizontalMargin = image.Height / 4;
+            var horizontalMargin = image.Height / 3;
 
             switch (gravity)
             {

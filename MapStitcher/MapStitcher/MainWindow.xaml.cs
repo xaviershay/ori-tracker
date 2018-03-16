@@ -60,8 +60,8 @@ namespace MapStitcher
             AppState = state;
 
 
-            var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
-            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
+            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
+            var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
             var snapshotState = new ActionBlock<State>((s) =>
             {
                 var content = "";
@@ -89,10 +89,10 @@ namespace MapStitcher
             /*
             var sourceFiles = new List<string>
             {
-                $"{sourceDir}/sorrow-1.png",
-                $"{sourceDir}/sorrow-2.png",
+                $"{sourceDir}\\387290_20180314160604_1.png",
             };
             */
+            var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
             /*
             var sourceFiles = new List<string>
             {
@@ -101,7 +101,6 @@ namespace MapStitcher
                 $"{sourceDir}\\forlorn-3.png",
             };
             */
-            var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
             //state.ClearJoins();
             /*
             state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
@@ -259,9 +258,12 @@ namespace MapStitcher
                     remainingJoins = rejects.ToList();
                     rejects.Clear();
                 }
-                var merged = images.Merge();
-                DisplayImage(Viewer, merged);
-                this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
+                if (images.Any())
+                {
+                    var merged = images.Merge();
+                    DisplayImage(Viewer, merged);
+                    this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
+                }
             });
         }
 
