@@ -9,7 +9,7 @@ namespace MapStitcher
 
         public bool MeetsThreshold()
         {
-            return Entropy > 0.02;
+            return Entropy > 0.005;
         }
     }
 }

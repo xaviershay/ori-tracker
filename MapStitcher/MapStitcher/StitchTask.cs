@@ -42,7 +42,7 @@ namespace MapStitcher
 
         public void Report(double value)
         {
-            if (value < Progress)
+            if (value < Progress || value > 1.0)
             {
                 throw new ArgumentException();
             }

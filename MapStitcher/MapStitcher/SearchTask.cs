@@ -66,7 +66,7 @@ namespace MapStitcher
             {
                 var haystack = this.state.Image(this.haystack).Clone();
 
-                if (this.searchResult.Distance < SearchResult.MAX_DISTANCE)
+                if (this.searchResult != null && this.searchResult.Distance < SearchResult.MAX_DISTANCE)
                 {
                     var joinPoint = this.searchResult.HaystackPoint;
                     var x = joinPoint.X;
@@ -87,20 +87,26 @@ namespace MapStitcher
         private SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack,  StitchTask task, Point anchor)
         {
             // Resize needle 
-            var magnification = Math.Min((double)8 / needleImage.Width, 1.0);
+            var magnification = Math.Min((double)16 / needleImage.Width, 1.0);
+            var progress = (IProgress<double>)task;
 
             var resizeAmount = new Percentage(magnification * 100);
 
             var template = needleImage.Clone();
             template.Resize(resizeAmount);
+            template.RePage();
 
             var searchArea = haystack.Clone();
             searchArea.Resize(resizeAmount);
+            searchArea.RePage();
 
             var templatePixels = toPixels(template);
             var searchPixels = toPixels(searchArea);
 
             var candidates = new SortedList<double, Point>(new DuplicateKeyComparer<double>());
+
+            double totalCycles = (searchArea.Width - template.Width) * (searchArea.Height - template.Height);
+            double currentCycles = 0;
 
             for (var y = 0; y < searchPixels.Count - templatePixels.Count; y++)
             {
@@ -123,6 +129,8 @@ namespace MapStitcher
                             totalComparisons++;
                         }
                     }
+                    progress.Report(currentCycles / totalCycles);
+                    currentCycles++;
 
                     var averageDistance = sumOfDistance / totalComparisons;
 

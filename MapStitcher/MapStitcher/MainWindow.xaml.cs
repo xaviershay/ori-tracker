@@ -60,8 +60,8 @@ namespace MapStitcher
             AppState = state;
 
 
-            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
-            var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
+            var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
+            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
             var snapshotState = new ActionBlock<State>((s) =>
             {
                 var content = "";
@@ -93,13 +93,15 @@ namespace MapStitcher
                 $"{sourceDir}/sorrow-2.png",
             };
             */
+            /*
             var sourceFiles = new List<string>
             {
                 $"{sourceDir}\\forlorn-1.png",
                 $"{sourceDir}\\forlorn-2.png",
                 $"{sourceDir}\\forlorn-3.png",
             };
-            //var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
+            */
+            var sourceFiles = Directory.GetFiles(sourceDir, "*.png");
             //state.ClearJoins();
             /*
             state.ClearNeedle(new NeedleKey { Key = $"{sourceDir}/forlorn-3.png", Gravity = Gravity.West });
