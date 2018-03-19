@@ -25,7 +25,7 @@ namespace MapStitcher
             Name = $"Searching {System.IO.Path.GetFileName(haystack)} for {needle}";
         }
 
-        public void Run()
+        public override void Run()
         {
             var cached = false;
 
@@ -160,6 +160,17 @@ namespace MapStitcher
             return candidates;
         }
 
+        internal override void ClearCache()
+        {
+            base.ClearCache();
+
+            state.ClearSearch(haystack, needle);
+
+            Reset();
+
+            initialCandidates = null;
+        }
+
         // TODO: Name of this method + signature is a mess
         private SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack, StitchTask task, Point anchor)
         {
@@ -218,12 +229,13 @@ namespace MapStitcher
                 foreach (var candidate in toLoop)
                 {
                     var point = new Point(candidate.Value.X / magnification * newMagnification, candidate.Value.Y / magnification * newMagnification);
+                    var margin = NeedleSize * newMagnification / 2;
 
                     var clampedBounds = new MagickGeometry(
-                        (int)(point.X - pixelMagnification),
-                        (int)(point.Y - pixelMagnification),
-                        (int)(NeedleSize * newMagnification + pixelMagnification * 2),
-                        (int)(NeedleSize * newMagnification + pixelMagnification * 2)
+                        (int)(point.X - margin),
+                        (int)(point.Y - margin),
+                        (int)(NeedleSize * newMagnification + margin * 2),
+                        (int)(NeedleSize * newMagnification + margin * 2)
                     );
                     clampedBounds.X = Math.Max(0, clampedBounds.X);
                     clampedBounds.Y = Math.Max(0, clampedBounds.Y);

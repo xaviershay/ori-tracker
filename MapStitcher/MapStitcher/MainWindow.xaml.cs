@@ -112,6 +112,7 @@ namespace MapStitcher
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
             {
+                // TODO: Make this a load and crop task
                 var task = new StitchTask($"Load and crop {System.IO.Path.GetFileName(path)}");
                 this.Dispatcher.Invoke(() => Tasks.Add(task));
                 state.GetOrAddImage(path, () =>
@@ -193,10 +194,8 @@ namespace MapStitcher
             }
             headBlock.Complete();
 
-            await sink.Completion.ContinueWith(async _ =>
+            await sink.Completion.ContinueWith(_ =>
             {
-                snapshotState.Complete();
-                await snapshotState.Completion;
                 Console.WriteLine("Pipeline Finished");
                 Dictionary<string, Point> completedJoins = new Dictionary<string, Point>();
 
@@ -414,6 +413,13 @@ namespace MapStitcher
                 var renderer = new Renderer(Viewer, Viewer2);
                 selected.ShowPreview(renderer);
             }
+        }
+
+        private void ClearCache_Button_Click(object sender, RoutedEventArgs e)
+        {
+            StitchTask task = (StitchTask)((Button)sender).DataContext;
+            task.ClearCache();
+            Task.Run(() => task.Run());
         }
     }
 }

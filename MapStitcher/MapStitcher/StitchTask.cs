@@ -19,15 +19,30 @@ namespace MapStitcher
         public StitchTask(string name = "")
         {
             Name = name;
+            Reset();
+        }
+
+        protected virtual void Reset()
+        {
             Progress = 0.0;
             FinishTime = null;
             StartTime = DateTime.Now;
+            Result = "";
+            Cached = null;
+
+            NotifyPropertyChanged("Progress");
+            NotifyPropertyChanged("StartTime");
+            NotifyPropertyChanged("Duration");
+            NotifyPropertyChanged("Result");
+            NotifyPropertyChanged("Cached");
         }
         
         public virtual void ShowPreview(Renderer renderer)
         {
 
         }
+
+        public virtual void Run() { }
 
         public void Complete(string result, bool cached)
         {
@@ -65,6 +80,10 @@ namespace MapStitcher
                     return null;
                 }
             }
+        }
+
+        internal virtual void ClearCache()
+        {
         }
     }
 }

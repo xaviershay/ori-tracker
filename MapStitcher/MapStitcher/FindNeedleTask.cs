@@ -55,7 +55,7 @@ namespace MapStitcher
             renderer.DisplayImages(preview);
         }
 
-        public void Run()
+        public override void Run()
         {
             var cached = true;
             this.searchResult = state.GetOrAddNeedle(needle, () =>
@@ -78,6 +78,13 @@ namespace MapStitcher
                 resultLabel = $"Found at ({searchResult.Point}), {searchResult.Entropy}";
             }
             Complete(resultLabel, cached);
+        }
+
+        internal override void ClearCache()
+        {
+            base.ClearCache();
+            state.ClearNeedle(needle);
+            Reset();
         }
 
         private NeedleResult FindHighEntropyStrip(IMagickImage image, Gravity gravity, double NeedleSize, StitchTask task)

@@ -74,12 +74,32 @@ namespace MapStitcher
 
         public void ClearNeedle(NeedleKey key)
         {
-            needles.Remove(key);
+            lock (lockObject)
+            {
+                needles.Remove(key);
+            }
         }
 
-        internal void ClearJoins()
+        public void ClearJoins()
         {
-            this.searchResults.Clear();
+            lock (lockObject)
+            {
+                this.searchResults.Clear();
+            }
+        }
+
+        public void ClearSearch(string haystack, NeedleKey needle)
+        {
+            var changed = false;
+            lock (lockObject)
+            {
+                changed = searchResults.Remove(SearchKey.Create(haystack, needle));
+            }
+
+            if (changed)
+            {
+                NotifyChangeListeners();
+            }
         }
 
         public void Lock(Action<State> f)

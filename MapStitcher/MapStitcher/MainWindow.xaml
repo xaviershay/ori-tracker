@@ -66,6 +66,14 @@
                     <GridViewColumn DisplayMemberBinding="{Binding Result}" Width="200">
                         <GridViewColumnHeader>Result</GridViewColumnHeader>
                     </GridViewColumn>
+                    <GridViewColumn Width="200">
+                        <GridViewColumnHeader>Actions</GridViewColumnHeader>
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Click="ClearCache_Button_Click">Rerun</Button>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
                 </GridView>
             </ListView.View>
         </ListView>
