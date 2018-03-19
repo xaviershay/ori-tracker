@@ -196,8 +196,9 @@ namespace MapStitcher
             template.Resize(resizeAmount);
             template.RePage();
 
-            IMagickImage searchArea;
-            while (true)
+            IMagickImage searchArea = null;
+            var resized = false;
+            while (!resized)
             {
                 try
                 {
@@ -207,11 +208,11 @@ namespace MapStitcher
                         searchArea.Resize(resizeAmount);
                         searchArea.RePage();
                     }
-                    break;
+                    resized = true;
                 } catch (AccessViolationException)
                 {
                     Console.WriteLine("Corrupt Memory, trying again");
-                    Thread.Sleep(100);
+                    Thread.Sleep(500);
                 }
             }
 
@@ -222,7 +223,7 @@ namespace MapStitcher
             var oldHeight = searchArea.Height;
 
             var bounds = new MagickGeometry(0, 0, searchArea.Width, searchArea.Height);
-            var candidates = FindTemplateCandidates(searchArea, template, bounds, progress, 2500, new HashSet<Point>());
+            var candidates = FindTemplateCandidates(searchArea, template, bounds, progress, 1000, new HashSet<Point>());
 
             if (candidates.Any())
             {

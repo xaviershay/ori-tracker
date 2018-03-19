@@ -198,8 +198,49 @@ namespace MapStitcher
                 }
 
                 var existingJoins = state.Joins.ToList();
+                var connectedJoins = new HashSet<HashSet<string>>();
 
-                if (existingJoins.Any(x => x.Image1 == haystack && x.Image2 == needle.Key || x.Image2 == haystack && x.Image1 == needle.Key))
+                foreach (var join in existingJoins)
+                {
+                    var found = false;
+                    foreach (var connectedSubset in connectedJoins)
+                    {
+                        if (connectedSubset.Contains(join.Image1) || connectedSubset.Contains(join.Image2))
+                        {
+                            connectedSubset.Add(join.Image1);
+                            connectedSubset.Add(join.Image2);
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found)
+                    {
+                        var newSubset = new HashSet<string>();
+                        newSubset.Add(join.Image1);
+                        newSubset.Add(join.Image2);
+                        connectedJoins.Add(newSubset);
+                    }
+                }
+                connectedJoins.Aggregate(new HashSet<HashSet<string>>(), (acc, x) => {
+                    var found = false;
+                    foreach (var connectedSubset in acc)
+                    {
+                        if (connectedSubset.Overlaps(x))
+                        {
+                            connectedSubset.UnionWith(x);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                    {
+                        acc.Add(x);
+                    }
+                    return acc;
+                });
+
+                if (connectedJoins.Any(x => x.Contains(haystack) && x.Contains(needle.Key)))
                 {
                     Console.WriteLine("Skipping because join already found between these two images");
                     return haystack;
