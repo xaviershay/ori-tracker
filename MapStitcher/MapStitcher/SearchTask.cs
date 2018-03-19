@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 
 namespace MapStitcher
@@ -69,8 +70,13 @@ namespace MapStitcher
                 var magnification = Math.Min(1 / (double)pixelMagnification, 1.0);
                 var resizeAmount = new Percentage(magnification * 100);
 
-                var haystack = this.state.Image(this.haystack).Clone();
-                haystack.Resize(resizeAmount);
+                IMagickImage newHaystack = null;
+                var haystack = this.state.Image(this.haystack);
+                lock (haystack) {
+                    newHaystack = haystack.Clone();
+                    newHaystack.Resize(resizeAmount);
+                };
+                haystack = newHaystack;
 
                 if (this.initialCandidates != null)
                 {
@@ -152,9 +158,8 @@ namespace MapStitcher
                         var averageDistance = sumOfDistance / totalComparisons;
 
                         var variance = m2 / (count - 1);
-                        if (averageDistance <= threshold && Math.Abs(variance) < 1000000)
+                        if (averageDistance <= threshold && Math.Abs(variance) < 100000)
                         {
-                            Console.WriteLine("Variance: {0}", m2 / (count - 1));
                             candidates.Add(averageDistance, point);
                         }
                         tried.Add(point);
@@ -192,12 +197,23 @@ namespace MapStitcher
             template.RePage();
 
             IMagickImage searchArea;
-            lock (haystack)
+            while (true)
             {
-                searchArea = haystack.Clone();
+                try
+                {
+                    lock (haystack)
+                    {
+                        searchArea = haystack.Clone();
+                        searchArea.Resize(resizeAmount);
+                        searchArea.RePage();
+                    }
+                    break;
+                } catch (AccessViolationException)
+                {
+                    Console.WriteLine("Corrupt Memory, trying again");
+                    Thread.Sleep(100);
+                }
             }
-            searchArea.Resize(resizeAmount);
-            searchArea.RePage();
 
             // We need to get the actual values here, since Resize() has unexpected rounding logic
             // (only supports whole digit percentages) and if we don't use the actual values then
@@ -230,9 +246,12 @@ namespace MapStitcher
                 Console.WriteLine("Considering {0} candidates at {1}", toLoop.Count(), newMagnification);
 
                 IMagickImage newHaystack = null;
-                lock (haystack) { newHaystack = haystack.Clone(); }
-                newHaystack.Resize(newResizeAmount);
-                newHaystack.RePage();
+                lock (haystack)
+                {
+                    newHaystack = haystack.Clone();
+                    newHaystack.Resize(newResizeAmount);
+                    newHaystack.RePage();
+                }
 
                 var t2 = needleImage.Clone();
                 t2.Resize(newResizeAmount);

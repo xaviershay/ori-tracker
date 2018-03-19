@@ -40,6 +40,45 @@ namespace MapStitcher
             Gravity.South,
             Gravity.West
         };
+        public int totalSearchTasks = 0;
+        public int completedSearchTasks = 0;
+
+        public async Task UpdateUI()
+        {
+            while (true)
+            {
+                await Task.Delay(500);
+                await this.Dispatcher.InvokeAsync(() =>
+                {
+                    OverallProgress.Maximum = totalSearchTasks;
+                    OverallProgress.Value = completedSearchTasks;
+                });
+            }
+        }
+
+        public static void WriteAllTextWithBackup(string path, string contents)
+        {
+            // generate a temp filename
+            // Assume we're only dealing with a single filesystem
+            var tempPath = System.IO.Path.GetTempFileName();
+
+            // create the backup name
+            var backup = path + ".backup";
+
+            // delete any existing backups
+            if (File.Exists(backup))
+                File.Delete(backup);
+
+            // get the bytes
+            var data = Encoding.UTF8.GetBytes(contents);
+
+            // write the data to a temp file
+            using (var tempFile = File.Create(tempPath, 4096, FileOptions.WriteThrough))
+                tempFile.Write(data, 0, data.Length);
+
+            // replace the contents
+            File.Replace(tempPath, path, backup);
+        }
 
         public async Task DoNetwork()
         {
@@ -60,13 +99,14 @@ namespace MapStitcher
             AppState = state;
 
 
-            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount / 2, 1));
-            var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
+            var workerPool = new LimitedConcurrencyLevelTaskScheduler(Math.Max(Environment.ProcessorCount - 2, 1)); // / 2, 1));
+            //var workerPool = new LimitedConcurrencyLevelTaskScheduler(1);
             var snapshotState = new ActionBlock<State>((s) =>
             {
                 var content = "";
                 s.Lock(lockedState => content = JsonConvert.SerializeObject(lockedState));
-                File.WriteAllText(cacheFile, content);
+                WriteAllTextWithBackup(cacheFile, content);
+                this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
             }, new ExecutionDataflowBlockOptions
             {
                 MaxDegreeOfParallelism = 1
@@ -109,6 +149,8 @@ namespace MapStitcher
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-1.png");
             */
             this.Dispatcher.Invoke(() => SourceImages.ItemsSource = sourceFiles);
+            this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
+            UpdateUI();
 
             var loadFromDiskBlock = new TransformBlock<string, string>(path =>
             {
@@ -121,7 +163,7 @@ namespace MapStitcher
                     var originalSize = new Size(image.Width, image.Height);
                     int sideMargin = (int)(image.Width * 0.06); // The sides are darkened, so clip them out.
                     int topMargin = (int)(image.Height * 0.17);
-                    int bottomMargin = (int)(image.Height * 0.10);
+                    int bottomMargin = (int)(image.Height * 0.15);
                     var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
                     image.Crop(bounds);
                     image.RePage();
@@ -154,6 +196,14 @@ namespace MapStitcher
                 {
                     return haystack; // TODO: This doesn't mean anything
                 }
+
+                var existingJoins = state.Joins.ToList();
+
+                if (existingJoins.Any(x => x.Image1 == haystack && x.Image2 == needle.Key || x.Image2 == haystack && x.Image1 == needle.Key))
+                {
+                    Console.WriteLine("Skipping because join already found between these two images");
+                    return haystack;
+                }
                 /*
                 if (!(System.IO.Path.GetFileName(haystack) == "forlorn-2.png" && needle.ToString() == "forlorn-1.png|North"))
                 {
@@ -167,6 +217,7 @@ namespace MapStitcher
 
                 task.Run();
 
+                completedSearchTasks++;
                 return haystack; // TODO: Figure out best thing to propagate. Maybe when match found?
             }, blockOptions);
 
@@ -184,10 +235,29 @@ namespace MapStitcher
             broadcaster.LinkTo(cartesian.Left, propagate);
             findNeedleBlock.LinkTo(cartesian.Right, propagate);
 
-            cartesian.LinkTo(findJoinBlock, propagate);
+            var countTotals = new TransformBlock<Tuple<string, NeedleKey>, Tuple<string, NeedleKey>>(needle =>
+            {
+                totalSearchTasks++;
+                return needle;
+            }, new ExecutionDataflowBlockOptions
+            {
+                MaxDegreeOfParallelism = 1
+            });
+            var countCompleted = new TransformBlock<string, string>(t =>
+            {
+                //completedSearchTasks++;
+                return t;
+            }, new ExecutionDataflowBlockOptions
+            {
+                MaxDegreeOfParallelism = 1
+            });
+
+            cartesian.LinkTo(countTotals, propagate);
+            countTotals.LinkTo(findJoinBlock, propagate);
 
             var sink = new ActionBlock<string>(s => { });
-            findJoinBlock.LinkTo(sink, propagate);
+            findJoinBlock.LinkTo(countCompleted, propagate);
+            countCompleted.LinkTo(sink, propagate);
 
             foreach (var file in sourceFiles)
             {
@@ -262,7 +332,6 @@ namespace MapStitcher
                 {
                     var merged = images.Merge();
                     DisplayImage(Viewer, merged);
-                    this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
                 }
             });
         }
@@ -315,6 +384,7 @@ namespace MapStitcher
             TaskGrid.ItemsSource = Tasks;
             // Implement "sticky" scrolling. If the control is scrolled to the bottom, keep it that
             // way when new items are added. Otherwise, don't change the scroll position.
+            /*
             Tasks.CollectionChanged += (sender, args) =>
             {
                 var viewer = GetScrollViewer(TaskGrid);
@@ -323,6 +393,7 @@ namespace MapStitcher
                     TaskGrid.ScrollIntoView(Tasks.Last());
                 }
             };
+            */
             Task.Run(() => DoNetwork());
         }
 
