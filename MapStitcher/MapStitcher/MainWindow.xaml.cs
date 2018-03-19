@@ -125,6 +125,7 @@ namespace MapStitcher
                     var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
                     image.Crop(bounds);
                     image.RePage();
+                    //image.Write("C:\\Users\\Xavier\\Source\\ori-tracker\\MapStitcher\\Temp\\" + System.IO.Path.GetFileName(path));
                     return image;
                 });
                 task.Complete("Done", false);

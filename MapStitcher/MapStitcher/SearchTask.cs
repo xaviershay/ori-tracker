@@ -65,17 +65,22 @@ namespace MapStitcher
         {
             if (NeedleImage != null)
             {
+                var pixelMagnification = 4.0;
+                var magnification = Math.Min(1 / (double)pixelMagnification, 1.0);
+                var resizeAmount = new Percentage(magnification * 100);
+
                 var haystack = this.state.Image(this.haystack).Clone();
+                haystack.Resize(resizeAmount);
 
                 if (this.initialCandidates != null)
                 {
                     foreach(var candidate in this.initialCandidates)
                     {
                         var rect = new Drawables()
-                          .StrokeWidth(2)
+                          .StrokeWidth(1)
                           .StrokeColor(new MagickColor("blue"))
                           .FillOpacity(new Percentage(0))
-                          .Rectangle(candidate.X, candidate.Y, candidate.X + NeedleSize, candidate.Y + NeedleSize);
+                          .Rectangle(candidate.X * magnification, candidate.Y * magnification, (candidate.X + NeedleSize) * magnification, (candidate.Y + NeedleSize) * magnification);
                         haystack.Draw(rect);
                     }
                 }
@@ -87,13 +92,15 @@ namespace MapStitcher
                     var y = joinPoint.Y;
 
                     var rect = new Drawables()
-                      .StrokeWidth(2)
+                      .StrokeWidth(1)
                       .StrokeColor(searchResult.MeetsThreshold() ? new MagickColor("green") : new MagickColor("yellow"))
                       .FillOpacity(new Percentage(0))
-                      .Rectangle(x, y, x + NeedleSize, y + NeedleSize);
+                      .Rectangle(x * magnification, y * magnification, (x + NeedleSize) * magnification, (y + NeedleSize) * magnification);
                     haystack.Draw(rect);
                 }
-                renderer.DisplayImages(haystack, NeedleImage);
+                var needle = NeedleImage.Clone();
+                needle.Resize(resizeAmount);
+                renderer.DisplayImages(haystack, needle);
             }
         }
         private SortedList<double, Point> FindTemplateCandidates(IMagickImage searchArea, IMagickImage template, MagickGeometry bounds, IProgress<double> progress, double threshold, HashSet<Point> tried)
@@ -191,6 +198,12 @@ namespace MapStitcher
             searchArea.Resize(resizeAmount);
             searchArea.RePage();
 
+            // We need to get the actual values here, since Resize() has unexpected rounding logic
+            // (only supports whole digit percentages) and if we don't use the actual values then
+            // scaling math won't work properly.
+            var oldWidth = searchArea.Width;
+            var oldHeight = searchArea.Height;
+
             var bounds = new MagickGeometry(0, 0, searchArea.Width, searchArea.Height);
             var candidates = FindTemplateCandidates(searchArea, template, bounds, progress, 2500, new HashSet<Point>());
 
@@ -201,6 +214,7 @@ namespace MapStitcher
                     return new Point(x.Value.X / magnification, x.Value.Y / magnification);
                 }).ToList();
             }
+
 
             while (pixelMagnification > 1 && candidates.Any())
             {
@@ -225,9 +239,10 @@ namespace MapStitcher
 
                 var cache = new HashSet<Point>();
 
+
                 foreach (var candidate in toLoop)
                 {
-                    var point = new Point(candidate.Value.X / magnification * newMagnification, candidate.Value.Y / magnification * newMagnification);
+                    var point = new Point(candidate.Value.X / oldWidth * newHaystack.Width, candidate.Value.Y / oldHeight * newHaystack.Height);
                     var margin = NeedleSize * newMagnification / 2;
 
                     var clampedBounds = new MagickGeometry(
@@ -255,6 +270,8 @@ namespace MapStitcher
                 candidates = newCandidates;
                 magnification = newMagnification;
                 pixelMagnification = newPixelMagnification;
+                oldWidth = newHaystack.Width;
+                oldHeight = newHaystack.Height;
             }
 
             Console.WriteLine("============ Final: {0}", candidates.Count);
