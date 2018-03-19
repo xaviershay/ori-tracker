@@ -49,7 +49,7 @@ namespace MapStitcher
             this.searchResult = state.GetOrAddSearch(haystack, needle, () =>
             {
                 cached = false;
-                var result = FindAnchorInImage2(NeedleImage, needle.Gravity, state.Image(haystack), this, anchor);
+                var result = FindTemplateInImage(NeedleImage, needle.Gravity, state.Image(haystack), this, anchor);
                 return result;
             });
 
@@ -99,14 +99,13 @@ namespace MapStitcher
         private SortedList<double, Point> FindTemplateCandidates(IMagickImage searchArea, IMagickImage template, MagickGeometry bounds, IProgress<double> progress, double threshold, HashSet<Point> tried)
         {
             Console.WriteLine("Searching an area {0}x{1} in {4}x{5} for {2}x{3}", bounds.Width, bounds.Height, template.Width, template.Height, searchArea.Width, searchArea.Height);
-            var templatePixels = toPixels(template);
-            var searchPixels = toPixels(searchArea);
+            var templatePixels = ToPixels(template);
+            var searchPixels = ToPixels(searchArea);
 
             var candidates = new SortedList<double, Point>(new DuplicateKeyComparer<double>());
 
             double totalCycles = (bounds.Width - template.Width) * (bounds.Height - template.Height);
             double currentCycles = 0;
-
 
             for (var y = bounds.Y; y < bounds.Y + bounds.Height - templatePixels.Count; y++)
             {
@@ -172,7 +171,7 @@ namespace MapStitcher
         }
 
         // TODO: Name of this method + signature is a mess
-        private SearchResult FindAnchorInImage2(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack, StitchTask task, Point anchor)
+        private SearchResult FindTemplateInImage(IMagickImage needleImage, Gravity needleGravity, IMagickImage haystack, StitchTask task, Point anchor)
         {
             // Resize needle 
             var pixelMagnification = 8.0;
@@ -271,93 +270,10 @@ namespace MapStitcher
                     NeedlePoint = anchor
                 };
             }
-
-            /*
-            do
-            {
-
-                var template = needleImage.Clone();
-                template.Resize(resizeAmount);
-                template.RePage();
-
-                var searchArea = haystack.Clone();
-                searchArea.Resize(resizeAmount);
-                searchArea.RePage();
-
-                var candidates = FindTemplateCandidates(searchArea, template, progress);
-
-                if (candidates.Any())
-                {
-
-                } else
-                {
-                    break;
-                }
-
-                magnification = Math.Min(magnification * 2, 1.0);
-            } while (magnification < 1.0);
-            */
-
-            /*
-            var template = needleImage.Clone();
-            template.Resize(resizeAmount);
-            template.RePage();
-
-            var searchArea = haystack.Clone();
-            searchArea.Resize(resizeAmount);
-            searchArea.RePage();
-
-            var candidates = FindTemplateCandidates(searchArea, template, this);
-
-            if (candidates.Any())
-            {
-                var topCandidates = candidates.Where(x => x.Key < 1500);
-
-                if (topCandidates.Any())
-                {
-                    var newCandidates = new SortedList<double, Point>(new DuplicateKeyComparer<double>());
-                    Console.WriteLine(topCandidates.Count());
-
-                    foreach (var candidate in topCandidates)
-                    {
-                        var s2 = haystack.Clone();
-                        var point = new Point(candidate.Value.X / magnification, candidate.Value.Y / magnification);
-                        s2.Crop((int)point.X - NeedleSize / 2, (int)point.Y - NeedleSize / 2, NeedleSize * 2, NeedleSize * 2);
-                        s2.RePage();
-                        var t2 = needleImage.Clone();
-
-                        foreach (var newCandidate in FindTemplateCandidates(s2, t2, this))
-                        {
-                            newCandidates.Add(newCandidate.Key, newCandidate.Value);
-                        }
-                    }
-                    var bestCandidate = newCandidates.First();
-
-                    return new SearchResult()
-                    {
-                        Distance = bestCandidate.Key,
-                        HaystackPoint = bestCandidate.Value,
-                        NeedlePoint = anchor
-                    };
-                } else
-                {
-                    // This isn't a winner, but return a result anyway for the preview UI
-                    var bestCandidate = candidates.First();
-                    return new SearchResult()
-                    {
-                        Distance = bestCandidate.Key,
-                        HaystackPoint = new Point(bestCandidate.Value.X / magnification, bestCandidate.Value.Y / magnification),
-                        NeedlePoint = anchor
-                    };
-
-                }
-
-            }
-            */
             return SearchResult.Null;
         }
 
-        private List<List<System.Drawing.Color>> toPixels(IMagickImage image)
+        private List<List<System.Drawing.Color>> ToPixels(IMagickImage image)
         {
             var pixels = image.GetPixels();
             return LinqExtensions.FromTo(0, image.Height).Select(y => LinqExtensions.FromTo(0, image.Width).Select(x => pixels.GetPixel(x, y).ToColor().ToColor()).ToList()).ToList();
@@ -367,6 +283,7 @@ namespace MapStitcher
         {
             return Math.Pow((a.R - b.R), 2) + Math.Pow(a.G - b.G, 2) + Math.Pow(a.B - b.B, 2);
         }
+
         public class DuplicateKeyComparer<TKey>
                         :
                      IComparer<TKey> where TKey : IComparable
