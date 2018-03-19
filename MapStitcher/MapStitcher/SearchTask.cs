@@ -65,7 +65,7 @@ namespace MapStitcher
         {
             if (NeedleImage != null)
             {
-                var pixelMagnification = 4.0;
+                var pixelMagnification = 1.0;
                 var magnification = Math.Min(1 / (double)pixelMagnification, 1.0);
                 var resizeAmount = new Percentage(magnification * 100);
 
@@ -91,6 +91,7 @@ namespace MapStitcher
                     var x = joinPoint.X;
                     var y = joinPoint.Y;
 
+                    haystack.Crop((int)(x * magnification), (int)(y * magnification), (int)(NeedleSize * magnification), (int)(NeedleSize * magnification));
                     var rect = new Drawables()
                       .StrokeWidth(1)
                       .StrokeColor(searchResult.MeetsThreshold() ? new MagickColor("green") : new MagickColor("yellow"))
@@ -151,7 +152,7 @@ namespace MapStitcher
                         var averageDistance = sumOfDistance / totalComparisons;
 
                         var variance = m2 / (count - 1);
-                        if (averageDistance <= threshold && Math.Abs(variance) < 100000)
+                        if (averageDistance <= threshold && Math.Abs(variance) < 1000000)
                         {
                             Console.WriteLine("Variance: {0}", m2 / (count - 1));
                             candidates.Add(averageDistance, point);
