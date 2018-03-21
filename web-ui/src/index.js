@@ -4,8 +4,11 @@ import './index.css';
 import registerServiceWorker from './registerServiceWorker';
 import firebase from 'firebase'
 import firestore from '@firebase/firestore'
-import { Map, ImageOverlay, TileLayer } from 'react-leaflet';
+import { Map, ImageOverlay, TileLayer, Polyline } from 'react-leaflet';
 import Leaflet from 'leaflet';
+import { withRouter, Route } from 'react-router';
+import { BrowserRouter, Link } from 'react-router-dom';
+import uuid from 'uuid-encoded';
 
 firebase.initializeApp({
   apiKey: 'AIzaSyBPza7LIiAnw0XZcoh9qJTjDXmI9q2El2U',
@@ -17,17 +20,121 @@ var db = firebase.firestore();
 const stamenTonerTiles = 'http://stamen-tiles-{s}.a.ssl.fastly.net/toner-background/{z}/{x}/{y}.png';
 const stamenTonerAttr = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-const mapCenter = [4240 / 2, 5800/2];
-const zoomLevel = 1;
-//const bounds = [[0, 0], [5800, 4240]]
-const bounds = [[0, 0], [4240, 5800]]
+function point(x, y) {
+  return {x: x, y: y};
+}
+
+let swampTeleporter = point(493.719818, -74.31961);
+let gladesTeleporter = point(109.90181, -257.681549);
+let swampTeleporterOnMap = point(4523, 2867);
+let gladesTeleporterOnMap = point(3438, 3384);
+
+var map1 = gladesTeleporterOnMap;
+var map2 = swampTeleporterOnMap;
+var game1 = gladesTeleporter;
+var game2 = swampTeleporter;
+
+var mapRightSide = 5800;
+var mapBottomSide = 4240;
+
+var gameLeftSide = game2.x - ((map2.x / (map2.x - map1.x)) * (game2.x - game1.x));
+var gameTopSide = game2.y - ((map2.y / (map2.y - map1.y)) * (game2.y - game1.y));
+
+var scalex = (swampTeleporter.x - gladesTeleporter.x) / (swampTeleporterOnMap.x - gladesTeleporterOnMap.x);
+var scaley = (swampTeleporter.y - gladesTeleporter.y) / (swampTeleporterOnMap.y - gladesTeleporterOnMap.y);
+
+var gameRightSide = mapRightSide / map1.x * (game1.x - gameLeftSide) + gameLeftSide
+var gameBottomSide = mapBottomSide / map1.y * (game1.y - gameTopSide) + gameTopSide
+
+function distance(a, b) {
+  return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2)
+}
+
+const mapCenter = [0, 0];
+const zoomLevel = 0;
+const bounds = [[gameBottomSide, gameLeftSide], [gameTopSide, gameRightSide]];
+
+
 class MapView extends React.Component {
+  constructor() {
+    super()
+    this.state = {traces: []}
+  }
+  componentWillMount() {
+    var me = this;
+    db
+      .collection('boards/abc123/players/xavier/traces')
+      .onSnapshot(function(snapshot) {
+        var maxContinuous = 50; // TODO: Figure out what makes sense here
+        var polyline = []
+        var traces = []
+        var lastPos = null;
+        var teleportColor = "lime";
+        var teleportOpacity = 0.5;
+        var traceColor = "red";
+        var traceOpacity = 0.7;
+        snapshot.forEach(function(doc) {
+          var data = doc.data();
+          if (lastPos == null || data.start) {
+            if (polyline.length > 0) {
+              traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
+            }
+
+            polyline = []
+          } else if (distance(lastPos, data) > maxContinuous) {
+            traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
+            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], [data.y, data.x]], opacity: teleportOpacity});
+            polyline = []
+          }
+          polyline.push([data.y, data.x]);
+          lastPos = data;
+        })
+        if (polyline.length > 0) {
+          traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
+        }
+
+        me.setState({traces: traces})
+      })
+  }
+
   render() {
     return <Map
       crs={Leaflet.CRS.Simple} minZoom={-3} zoom={zoomLevel} center={mapCenter}
     >
-     <ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />
+      <ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />
+      { this.state.traces.map((trace, idx) => <Polyline key={idx} color={trace.color} opacity={trace.opacity} positions={trace.line} />) }
     </Map>
+  }
+}
+
+const Board = ({match}) => {
+  return (
+      <div>
+        Board {match.params.publicId}
+        <MapView />
+      </div>
+  )
+}
+
+class MainPage extends React.Component {
+  newBoard(history) {
+    var publicBoardId = uuid();
+    var privateBoardId = uuid();
+
+    db.doc('boards/' + publicBoardId).set({
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      privateId: privateBoardId
+    });
+
+    history.push("/map/" + publicBoardId)
+  }
+
+  render() {
+    return(
+      <div>
+        <button onClick={() => this.newBoard(this.props.history)}>New board</button>
+      </div>
+    )
   }
 }
 
@@ -37,42 +144,12 @@ class Game extends React.Component {
     this.state = { traces: [] }
   }
 
-  componentWillMount() {
-    var me = this;
-    //db
-    //  .collection('boards/abc123/players/xavier/traces')
-    //  .onSnapshot(function(snapshot) {
-    //    var maxContinuous = 50; // TODO: Figure out what makes sense here
-    //    var traces = []
-    //    var lastPos = null;
-    //    snapshot.forEach(function(doc) {
-    //      var data = doc.data();
-    //      /*
-    //      var x = toMapCoord(data)
-    //      if (lastPos == null || data.start) {
-    //        trace.moveTo(x.x, x.y)
-    //      } else {
-    //        if (distance(lastPos, x) > maxContinuous) {
-    //          trace.lineStyle(2, 0x00ff00, 0.5);
-    //        } else {
-    //          trace.lineStyle(2, 0xff0000, 0.8);
-    //        }
-    //        trace.lineTo(x.x, x.y)
-    //      }
-    //      */
-    //      data.id = doc.id;
-    //      traces.push(data);
-    //    })
-    //    console.log(traces);
-    //    me.setState({traces: traces})
-    //  })
-  }
   render() {
     return (
       <div className="game">
-        <h1>Hello</h1>
-        <button onClick={() => alert('hi')}>New board</button>
-        <MapView />
+        <h1>Ori Tracker</h1>
+        <Route path="/" component={MainPage} />
+        <Route path="/map/:publicId" component={Board} />
       <ul>
         {
           this.state.traces.map( k => <li key={k.id}>{k.x},{k.y}</li> )
@@ -84,7 +161,9 @@ class Game extends React.Component {
 }
 
 ReactDOM.render(
-    <Game />,
+    <BrowserRouter>
+      <Game />
+    </BrowserRouter>,
     document.getElementById('root')
 );
 registerServiceWorker();
