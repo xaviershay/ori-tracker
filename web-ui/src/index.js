@@ -4,6 +4,7 @@ import './index.css';
 import registerServiceWorker from './registerServiceWorker';
 import firebase from 'firebase'
 import firestore from '@firebase/firestore'
+import { Map, TileLayer } from 'react-leaflet';
 
 firebase.initializeApp({
   apiKey: 'AIzaSyBPza7LIiAnw0XZcoh9qJTjDXmI9q2El2U',
@@ -11,6 +12,25 @@ firebase.initializeApp({
   projectId: 'ori-tracker'
 });
 var db = firebase.firestore();
+
+const stamenTonerTiles = 'http://stamen-tiles-{s}.a.ssl.fastly.net/toner-background/{z}/{x}/{y}.png';
+const stamenTonerAttr = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+const mapCenter = [39.9528, -75.1638];
+const zoomLevel = 12;
+class MapView extends React.Component {
+  render() {
+    return <Map
+        center={mapCenter}
+        zoom={zoomLevel}
+    >
+        <TileLayer
+            attribution={stamenTonerAttr}
+            url={stamenTonerTiles}
+        />
+    </Map>
+  }
+}
 
 class Game extends React.Component {
   constructor(props) {
@@ -20,38 +40,40 @@ class Game extends React.Component {
 
   componentWillMount() {
     var me = this;
-    db
-      .collection('boards/abc123/players/xavier/traces')
-      .onSnapshot(function(snapshot) {
-        var maxContinuous = 50; // TODO: Figure out what makes sense here
-        var traces = []
-        var lastPos = null;
-        snapshot.forEach(function(doc) {
-          var data = doc.data();
-          /*
-          var x = toMapCoord(data)
-          if (lastPos == null || data.start) {
-            trace.moveTo(x.x, x.y)
-          } else {
-            if (distance(lastPos, x) > maxContinuous) {
-              trace.lineStyle(2, 0x00ff00, 0.5);
-            } else {
-              trace.lineStyle(2, 0xff0000, 0.8);
-            }
-            trace.lineTo(x.x, x.y)
-          }
-          */
-          data.id = doc.id;
-          traces.push(data);
-        })
-        console.log(traces);
-        me.setState({traces: traces})
-      })
+    //db
+    //  .collection('boards/abc123/players/xavier/traces')
+    //  .onSnapshot(function(snapshot) {
+    //    var maxContinuous = 50; // TODO: Figure out what makes sense here
+    //    var traces = []
+    //    var lastPos = null;
+    //    snapshot.forEach(function(doc) {
+    //      var data = doc.data();
+    //      /*
+    //      var x = toMapCoord(data)
+    //      if (lastPos == null || data.start) {
+    //        trace.moveTo(x.x, x.y)
+    //      } else {
+    //        if (distance(lastPos, x) > maxContinuous) {
+    //          trace.lineStyle(2, 0x00ff00, 0.5);
+    //        } else {
+    //          trace.lineStyle(2, 0xff0000, 0.8);
+    //        }
+    //        trace.lineTo(x.x, x.y)
+    //      }
+    //      */
+    //      data.id = doc.id;
+    //      traces.push(data);
+    //    })
+    //    console.log(traces);
+    //    me.setState({traces: traces})
+    //  })
   }
   render() {
     return (
       <div className="game">
         <h1>Hello</h1>
+        <button onClick={() => alert('hi')}>New board</button>
+        <MapView />
       <ul>
         {
           this.state.traces.map( k => <li key={k.id}>{k.x},{k.y}</li> )
