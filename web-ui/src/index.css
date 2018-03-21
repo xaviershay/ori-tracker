@@ -1,6 +1,9 @@
-body {}
+html, body {
+  height: 100%;
+  margin: 0;
+}
 
 .leaflet-container {
-    height: 600px;
-    width: 600px;
+    height: 1000px;
+    width: 100%;
 }

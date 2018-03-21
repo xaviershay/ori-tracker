@@ -4,7 +4,8 @@ import './index.css';
 import registerServiceWorker from './registerServiceWorker';
 import firebase from 'firebase'
 import firestore from '@firebase/firestore'
-import { Map, TileLayer } from 'react-leaflet';
+import { Map, ImageOverlay, TileLayer } from 'react-leaflet';
+import Leaflet from 'leaflet';
 
 firebase.initializeApp({
   apiKey: 'AIzaSyBPza7LIiAnw0XZcoh9qJTjDXmI9q2El2U',
@@ -16,18 +17,16 @@ var db = firebase.firestore();
 const stamenTonerTiles = 'http://stamen-tiles-{s}.a.ssl.fastly.net/toner-background/{z}/{x}/{y}.png';
 const stamenTonerAttr = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-const mapCenter = [39.9528, -75.1638];
-const zoomLevel = 12;
+const mapCenter = [4240 / 2, 5800/2];
+const zoomLevel = 1;
+//const bounds = [[0, 0], [5800, 4240]]
+const bounds = [[0, 0], [4240, 5800]]
 class MapView extends React.Component {
   render() {
     return <Map
-        center={mapCenter}
-        zoom={zoomLevel}
+      crs={Leaflet.CRS.Simple} minZoom={-3} zoom={zoomLevel} center={mapCenter}
     >
-        <TileLayer
-            attribution={stamenTonerAttr}
-            url={stamenTonerTiles}
-        />
+     <ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />
     </Map>
   }
 }
