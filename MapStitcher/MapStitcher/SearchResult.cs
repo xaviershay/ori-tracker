@@ -16,7 +16,7 @@ namespace MapStitcher
 
         public bool MeetsThreshold()
         {
-            return Distance < 400;
+            return Distance < 200;
         }
 
         internal Point Offset()

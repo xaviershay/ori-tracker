@@ -31,11 +31,24 @@ namespace MapStitcher
         {
             get
             {
-                return searchResults.Where(x => x.Value.MeetsThreshold()).Select(x => new Join() {
-                    Image1 = x.Key.Item1,
-                    Image2 = x.Key.Item2.Key,
-                    JoinPoint = x.Value.Offset()
-                });
+                lock (lockObject)
+                {
+                    return searchResults.Where(x => x.Value.MeetsThreshold()).Select(x => new Join() {
+                        Image1 = x.Key.Item1,
+                        Image2 = x.Key.Item2.Key,
+                        JoinPoint = x.Value.Offset(),
+                        Distance = x.Value.Distance,
+                    }).DistinctBy((x) =>
+                    {
+                        if (x.Image1.CompareTo(x.Image2) < 0)
+                        {
+                            return Tuple.Create(x.Image1, x.Image2);
+                        } else
+                        {
+                            return Tuple.Create(x.Image2, x.Image1);
+                        }
+                    }).ToList();
+                }
             }
         }
 
@@ -48,6 +61,17 @@ namespace MapStitcher
             needles = new Dictionary<NeedleKey, NeedleResult>();
             sources = new Dictionary<string, IMagickImage>();
             searchResults = new Dictionary<SearchKey, SearchResult>();
+        }
+
+        public void Delete(string key)
+        {
+            lock (lockObject)
+            {
+                sources.Remove(key);
+                searchResults = searchResults.Where(x => !(x.Key.Item1 == key || x.Key.Item2.Key == key)).ToDictionary(k => k.Key, v => v.Value);
+                needles = needles.Where(x => x.Key.Key != key).ToDictionary(k => k.Key, v => v.Value);
+            }
+            NotifyChangeListeners();
         }
 
         public IMagickImage Image(string key)
@@ -165,9 +189,11 @@ namespace MapStitcher
             public string Image2;
             public Point JoinPoint;
 
+            public double Distance { get; internal set; }
+
             public override string ToString()
             {
-                return $"{Path.GetFileName(Image1)}/{Path.GetFileName(Image2)}: {JoinPoint}";
+                return $"{Path.GetFileName(Image1)}/{Path.GetFileName(Image2)}: {JoinPoint} ({Distance})";
             }
         }
     }

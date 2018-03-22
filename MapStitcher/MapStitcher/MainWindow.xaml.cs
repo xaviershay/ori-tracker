@@ -76,17 +76,27 @@ namespace MapStitcher
             using (var tempFile = File.Create(tempPath, 4096, FileOptions.WriteThrough))
                 tempFile.Write(data, 0, data.Length);
 
+            if (!File.Exists(backup))
+            {
+                File.WriteAllText(backup, "");
+            }
+
+            if (!File.Exists(path))
+            {
+                File.WriteAllText(path, "");
+            }
+
             // replace the contents
             File.Replace(tempPath, path, backup);
         }
 
         public async Task DoNetwork()
         {
-            var cacheFile = System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/stitch_cache.json";
+            OpenCL.IsEnabled = false;
+            var cacheFile = System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\stitch_cache.json";
 
             State state = new State();
 
-            Console.WriteLine(JsonConvert.DeserializeObject<State>(JsonConvert.SerializeObject(state)));
             try
             {
                 state = JsonConvert.DeserializeObject<State>(File.ReadAllText(cacheFile));
@@ -119,7 +129,24 @@ namespace MapStitcher
                 MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded // Handled by underlying scheduler
             };
 
-            var sourceDir = "C:/Users/Xavier/Source/ori-tracker/MapStitcher/Screenshots";
+            //var sourceDir = "C:/Users/Xavier/Source/ori-tracker/MapStitcher/Screenshots";
+            var sourceDir = "C:/Users/Xavier/Source/ori-tracker/MapStitcher/4KScreenshots";
+            /*
+            IMagickImage image1 = new MagickImage(System.IO.Path.GetFullPath($"{sourceDir}/../Temp/forlorn-1.png"));
+            image1 = image1.Clone();
+            var settings = new MorphologySettings
+            {
+                Channels = Channels.Alpha,
+                Method = MorphologyMethod.Distance,
+                Kernel = Kernel.Euclidean,
+                KernelArguments = "1,50!"
+            };
+
+            image1.Alpha(AlphaOption.Set);
+            image1.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+            image1.Morphology(settings);
+            image1.Write(System.IO.Path.GetFullPath($"{sourceDir}/../Temp/forlorn-test.png"));
+            */
 
             /*
             MagickImage image1 = new MagickImage($"{sourceDir}/sorrow-1.png");
@@ -148,7 +175,7 @@ namespace MapStitcher
             state.ClearJoin($"{sourceDir}/forlorn-1.png", $"{sourceDir}/forlorn-3.png");
             state.ClearJoin($"{sourceDir}/forlorn-2.png", $"{sourceDir}/forlorn-1.png");
             */
-            this.Dispatcher.Invoke(() => SourceImages.ItemsSource = sourceFiles);
+            this.Dispatcher.Invoke(() => SourceImages.ItemsSource = SourceImages2.ItemsSource = sourceFiles);
             this.Dispatcher.Invoke(() => Joins.ItemsSource = AppState.Joins);
             UpdateUI();
 
@@ -161,7 +188,7 @@ namespace MapStitcher
                 {
                     var image = new MagickImage(path);
                     var originalSize = new Size(image.Width, image.Height);
-                    int sideMargin = (int)(image.Width * 0.06); // The sides are darkened, so clip them out.
+                    int sideMargin = (int)(image.Width * 0.15); // The sides have a subtle animated mask over them. 280px wide on 1920px resolution. Crop them out.
                     int topMargin = (int)(image.Height * 0.17);
                     int bottomMargin = (int)(image.Height * 0.15);
                     var bounds = new MagickGeometry(sideMargin, topMargin, image.Width - sideMargin * 2, image.Height - bottomMargin - topMargin);
@@ -187,17 +214,46 @@ namespace MapStitcher
                 return needle;
             }, blockOptions);
 
-            var findJoinBlock = new TransformBlock<Tuple<string, NeedleKey>, string>(t =>
+            var findJoinBlock = new TransformBlock<SearchKey, string>(t =>
             {
                 var haystack = t.Item1;
                 var needle = t.Item2;
 
+                var task = new SearchTask(state, haystack, needle);
+                this.Dispatcher.Invoke(() => Tasks.Add(task));
+
+                task.Run();
+
+                completedSearchTasks++;
+                return haystack; // TODO: Figure out best thing to propagate. Maybe when match found?
+            }, blockOptions);
+
+            var broadcaster = new BroadcastBlock<string>(null);
+            var cartesian = new CartesianProductBlock<string, NeedleKey>();
+
+            var propagate = new DataflowLinkOptions { PropagateCompletion = true };
+            var headBlock = loadFromDiskBlock;
+            headBlock.LinkTo(broadcaster, propagate);
+            broadcaster.LinkTo(gravities, propagate);
+            gravities.LinkTo(findNeedleBlock, propagate);
+
+            // Don't propagate completion from left/right sources for cartesian join. It should
+            // complete when _both_ are done (which is it's default behaviour)
+            broadcaster.LinkTo(cartesian.Left, propagate);
+            findNeedleBlock.LinkTo(cartesian.Right, propagate);
+
+            var countTotals = new TransformManyBlock<Tuple<string, NeedleKey>, SearchKey>(t =>
+            {
+                var haystack = t.Item1;
+                var needle = t.Item2;
+                var none = Enumerable.Empty<SearchKey>();
+
                 if (haystack == needle.Key || !state.GetNeedle(needle).MeetsThreshold())
                 {
-                    return haystack; // TODO: This doesn't mean anything
+                    return none;
                 }
 
-                var existingJoins = state.Joins.ToList();
+                var existingJoins = state.Joins;
                 var connectedJoins = new HashSet<HashSet<string>>();
 
                 foreach (var join in existingJoins)
@@ -242,52 +298,11 @@ namespace MapStitcher
 
                 if (connectedJoins.Any(x => x.Contains(haystack) && x.Contains(needle.Key)))
                 {
-                    Console.WriteLine("Skipping because join already found between these two images");
-                    return haystack;
+                    Console.WriteLine("Two images already connected via transitive joins, skipping");
+                    return none;
                 }
-                /*
-                if (!(System.IO.Path.GetFileName(haystack) == "forlorn-2.png" && needle.ToString() == "forlorn-1.png|North"))
-                {
-                    Console.WriteLine("Skipping");
-                    return haystack;
-                }
-                */
-
-                var task = new SearchTask(state, haystack, needle);
-                this.Dispatcher.Invoke(() => Tasks.Add(task));
-
-                task.Run();
-
-                completedSearchTasks++;
-                return haystack; // TODO: Figure out best thing to propagate. Maybe when match found?
-            }, blockOptions);
-
-            var broadcaster = new BroadcastBlock<string>(null);
-            var cartesian = new CartesianProductBlock<string, NeedleKey>();
-
-            var propagate = new DataflowLinkOptions { PropagateCompletion = true };
-            var headBlock = loadFromDiskBlock;
-            headBlock.LinkTo(broadcaster, propagate);
-            broadcaster.LinkTo(gravities, propagate);
-            gravities.LinkTo(findNeedleBlock, propagate);
-
-            // Don't propagate completion from left/right sources for cartesian join. It should
-            // complete when _both_ are done (which is it's default behaviour)
-            broadcaster.LinkTo(cartesian.Left, propagate);
-            findNeedleBlock.LinkTo(cartesian.Right, propagate);
-
-            var countTotals = new TransformBlock<Tuple<string, NeedleKey>, Tuple<string, NeedleKey>>(needle =>
-            {
                 totalSearchTasks++;
-                return needle;
-            }, new ExecutionDataflowBlockOptions
-            {
-                MaxDegreeOfParallelism = 1
-            });
-            var countCompleted = new TransformBlock<string, string>(t =>
-            {
-                //completedSearchTasks++;
-                return t;
+                return Enumerable.Repeat(SearchKey.Create(t.Item1, t.Item2), 1);
             }, new ExecutionDataflowBlockOptions
             {
                 MaxDegreeOfParallelism = 1
@@ -297,8 +312,7 @@ namespace MapStitcher
             countTotals.LinkTo(findJoinBlock, propagate);
 
             var sink = new ActionBlock<string>(s => { });
-            findJoinBlock.LinkTo(countCompleted, propagate);
-            countCompleted.LinkTo(sink, propagate);
+            findJoinBlock.LinkTo(sink, propagate);
 
             foreach (var file in sourceFiles)
             {
@@ -309,12 +323,34 @@ namespace MapStitcher
             await sink.Completion.ContinueWith(_ =>
             {
                 Console.WriteLine("Pipeline Finished");
+
+                /*
+                this.Dispatcher.Invoke(() => TaskGrid.ItemsSource = Tasks.Where(x =>
+                {
+                    if (x is SearchTask)
+                    {
+                        var task = (SearchTask)x;
+                        return task.Name.Contains("Found");
+                        return task.searchResult.MeetsThreshold();
+                        return task.searchResult.Distance < 2500;
+                    }
+                    return false;
+                }));
+                */
                 Dictionary<string, Point> completedJoins = new Dictionary<string, Point>();
 
                 var remainingJoins = new List<State.Join>(state.Joins);
                 var rejects = new List<State.Join>();
                 var images = new MagickImageCollection();
                 var lastCycleCount = 0;
+
+                var morphologySettings = new MorphologySettings
+                {
+                    Channels = Channels.Alpha,
+                    Method = MorphologyMethod.Distance,
+                    Kernel = Kernel.Euclidean,
+                    KernelArguments = "1,50!"
+                };
 
                 while (remainingJoins.Count > 0 && remainingJoins.Count != lastCycleCount)
                 {
@@ -323,15 +359,35 @@ namespace MapStitcher
                     {
                         if (completedJoins.Count == 0)
                         {
+                            var tempPath = System.IO.Path.GetTempFileName();
+                            var tempPath2 = System.IO.Path.GetTempFileName();
                             // Initial seed
                             var i1 = state.Image(join.Image1).Clone();
                             var i2 = state.Image(join.Image2).Clone();
+
+                            i1.Alpha(AlphaOption.Set);
+                            i1.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+                            i1.Morphology(morphologySettings);
+                            i1.Write(tempPath);
+                            i1.Dispose();
+                            i1 = new MagickImage(tempPath);
+                            i1.BackgroundColor = new MagickColor(18, 18, 18);
+
+                            i2.Alpha(AlphaOption.Set);
+                            i2.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+                            i2.Morphology(morphologySettings);
+                            i2.Write(tempPath2);
+                            i2.Dispose();
+                            i2 = new MagickImage(tempPath2);
+
                             i2.Page = new MagickGeometry($"{ToOffset(join.JoinPoint.X)}{ToOffset(join.JoinPoint.Y)}");
                             images.Add(i1);
                             images.Add(i2);
 
                             completedJoins.Add(join.Image1, new Point(0, 0));
                             completedJoins.Add(join.Image2, join.JoinPoint);
+                            File.Delete(tempPath);
+                            File.Delete(tempPath2);
                         }
                         else
                         {
@@ -339,25 +395,43 @@ namespace MapStitcher
                             if (completedJoins.ContainsKey(join.Image1) && completedJoins.ContainsKey(join.Image2))
                             {
                                 // NOOP
-                                //throw new Exception("Just curious what causes this");
                             } else if (completedJoins.ContainsKey(join.Image1))
                             {
                                 completedJoins.TryGetValue(join.Image1, out offset);
 
+                                var tempPath = System.IO.Path.GetTempFileName();
                                 var i2 = state.Image(join.Image2).Clone();
                                 var joinPoint = new Point(join.JoinPoint.X + offset.X, join.JoinPoint.Y + offset.Y);
+                                i2.Alpha(AlphaOption.Set);
+                                i2.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+                                i2.Morphology(morphologySettings);
+                                i2.Write(tempPath);
+                                //i2.Dispose();
+                                //i2 = new MagickImage(tempPath);
                                 i2.Page = new MagickGeometry($"{ToOffset(joinPoint.X)}{ToOffset(joinPoint.Y)}");
                                 images.Add(i2);
+                                File.Delete(tempPath);
                                 completedJoins.Add(join.Image2, joinPoint);
                             }
                             else if (completedJoins.ContainsKey(join.Image2))
                             {
                                 completedJoins.TryGetValue(join.Image2, out offset);
 
+                                var tempPath = System.IO.Path.GetTempFileName();
                                 var i1 = state.Image(join.Image1).Clone();
                                 var joinPoint = new Point(offset.X - join.JoinPoint.X, offset.Y - join.JoinPoint.Y);
+
+                                i1.Alpha(AlphaOption.Set);
+                                i1.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+                                i1.Morphology(morphologySettings);
+                                i1.Write(tempPath);
+                                //i1.Dispose();
+                                //i1 = new MagickImage(tempPath);
+
                                 i1.Page = new MagickGeometry($"{ToOffset(joinPoint.X)}{ToOffset(joinPoint.Y)}");
+
                                 images.Add(i1);
+                                File.Delete(tempPath);
                                 completedJoins.Add(join.Image1, joinPoint);
                             }
                             else
@@ -372,7 +446,13 @@ namespace MapStitcher
                 if (images.Any())
                 {
                     var merged = images.Merge();
+
+                    //merged.BackgroundColor = new MagickColor(0, 0, 0);
+                    //merged.Alpha(AlphaOption.Remove);
+                    //merged.Alpha(AlphaOption.Off);
+                    merged.Write("C:\\Users\\Xavier\\Source\\ori-tracker\\MapStitcher\\Temp\\map.png");
                     DisplayImage(Viewer, merged);
+                    Console.WriteLine("Done Compositing");
                 }
             });
         }
@@ -423,18 +503,24 @@ namespace MapStitcher
             AppState = new State();
 
             TaskGrid.ItemsSource = Tasks;
+
             // Implement "sticky" scrolling. If the control is scrolled to the bottom, keep it that
             // way when new items are added. Otherwise, don't change the scroll position.
-            /*
-            Tasks.CollectionChanged += (sender, args) =>
+            // HACK: Wait a second for the initial cached to be populated, otherwise this takes ages.
+            Task.Delay(3000).ContinueWith(_ =>
             {
-                var viewer = GetScrollViewer(TaskGrid);
-                if (viewer.VerticalOffset >= viewer.ScrollableHeight - 1)
+                this.Dispatcher.Invoke(() =>
                 {
-                    TaskGrid.ScrollIntoView(Tasks.Last());
-                }
-            };
-            */
+                    var viewer = GetScrollViewer(TaskGrid);
+                    Tasks.CollectionChanged += (sender, args) =>
+                    {
+                        if (viewer.VerticalOffset >= viewer.ScrollableHeight - 1)
+                        {
+                            TaskGrid.ScrollIntoView(Tasks.Last());
+                        }
+                    };
+                });
+            });
             Task.Run(() => DoNetwork());
         }
 
@@ -447,16 +533,18 @@ namespace MapStitcher
 
         private void SourceImages_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var selected = (string)SourceImages.SelectedItem;
+            var lv = (ListView)sender;
+            var selected = (string)lv.SelectedItem;
 
             if (selected != null)
             {
                 var image = AppState.Image(selected);
                 if (image != null)
                 {
+                    Joins.ItemsSource = AppState.Joins.Where(x => x.Image1 == selected || x.Image2 == selected);
                     image = image.Clone();
                     Task.Run(() => {
-                        var needles = allGravities.Select(x => AppState.GetNeedle(new NeedleKey { Key = selected, Gravity = x })).Where(x => x.MeetsThreshold()).Select(x => x.Point);
+                        var needles = allGravities.Select(x => AppState.GetNeedle(new NeedleKey { Key = selected, Gravity = x })).Where(x => x != null && x.MeetsThreshold()).Select(x => x.Point);
                         foreach (var needlePoint in needles)
                         {
                             var rect = new Drawables()
@@ -466,7 +554,14 @@ namespace MapStitcher
                               .Rectangle(needlePoint.X, needlePoint.Y, needlePoint.X + NeedleSize, needlePoint.Y + NeedleSize);
                             image.Draw(rect);
                         }
-                        DisplayImage(Viewer, image);
+                        image.Resize(new Percentage(50));
+                        if (lv == SourceImages)
+                        {
+                            DisplayImage(Viewer, image);
+                        } else
+                        {
+                            DisplayImage(Viewer2, image);
+                        }
                     });
                 }
             }
@@ -490,16 +585,39 @@ namespace MapStitcher
                 Task.Run(() =>
                 {
 
+                    var resize = 0.25;
+                    var resizeAmount = new Percentage(resize * 100);
                     image1 = image1.Clone();
+                    var settings = new MorphologySettings
+                    {
+                        Channels = Channels.Alpha,
+                        Method = MorphologyMethod.Distance,
+                        Kernel = Kernel.Euclidean,
+                        KernelArguments = "1,20!"
+                    };
+
+                    /*
+                    image1.Alpha(AlphaOption.Set);
+                    image1.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+                    image1.Morphology(settings);
+                    */
+
                     image2 = image2.Clone();
+                    /*
+                    image2.Alpha(AlphaOption.Set);
+                    image2.VirtualPixelMethod = VirtualPixelMethod.Transparent;
+                    image2.Morphology(settings);
+                    */
 
                     var images = new MagickImageCollection();
                     image2.Page = new MagickGeometry($"{ToOffset(join.JoinPoint.X)}{ToOffset(join.JoinPoint.Y)}");
                     images.Add(image1);
                     images.Add(image2);
                     var result = images.Merge();
+                    result.Resize(resizeAmount);
 
                     DisplayImage(Viewer, result);
+                    //DisplayImage(Viewer, image2);
                 });
             }
 
@@ -533,6 +651,31 @@ namespace MapStitcher
             StitchTask task = (StitchTask)((Button)sender).DataContext;
             task.ClearCache();
             Task.Run(() => task.Run());
+        }
+
+        private void Button_Click(object sender, RoutedEventArgs e)
+        {
+            var haystack = (string)SourceImages.SelectedItem;
+            var needle = (string)SourceImages2.SelectedItem;
+
+            var tasks = allGravities.Select(gravity => new SearchTask(AppState, haystack, new NeedleKey() { Key = needle, Gravity = gravity }));
+
+            foreach (var task in tasks)
+            {
+                if (AppState.GetNeedle(task.needle).MeetsThreshold())
+                {
+                    Tasks.Add(task);
+                    Task.Run(() => task.Run());
+                }
+            }
+        }
+
+        private void DeleteSource_Click(object sender, RoutedEventArgs e)
+        {
+            var haystack = (string)SourceImages.SelectedItem;
+
+            AppState.Delete(haystack);
+            File.Delete(haystack);
         }
     }
 }

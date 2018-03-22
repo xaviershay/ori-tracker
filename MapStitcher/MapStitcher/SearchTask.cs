@@ -10,12 +10,12 @@ namespace MapStitcher
     internal class SearchTask : StitchTask
     {
         private string haystack;
-        private NeedleKey needle;
+        public NeedleKey needle;
         private State state;
 
         private IMagickImage NeedleImage;
         private int NeedleSize = 100; // TODO: DI this
-        private SearchResult searchResult;
+        public SearchResult searchResult;
         private IEnumerable<Point> initialCandidates;
 
         public SearchTask(State state, string haystack, NeedleKey needle)
@@ -66,7 +66,7 @@ namespace MapStitcher
         {
             if (NeedleImage != null)
             {
-                var pixelMagnification = 1.0;
+                var pixelMagnification = 8.0;
                 var magnification = Math.Min(1 / (double)pixelMagnification, 1.0);
                 var resizeAmount = new Percentage(magnification * 100);
 
@@ -76,6 +76,7 @@ namespace MapStitcher
                     newHaystack = haystack.Clone();
                     newHaystack.Resize(resizeAmount);
                 };
+                var scaleFactor = newHaystack.Width / haystack.Width;
                 haystack = newHaystack;
 
                 if (this.initialCandidates != null)
@@ -86,7 +87,7 @@ namespace MapStitcher
                           .StrokeWidth(1)
                           .StrokeColor(new MagickColor("blue"))
                           .FillOpacity(new Percentage(0))
-                          .Rectangle(candidate.X * magnification, candidate.Y * magnification, (candidate.X + NeedleSize) * magnification, (candidate.Y + NeedleSize) * magnification);
+                          .Rectangle(candidate.X * scaleFactor, candidate.Y * scaleFactor, (candidate.X + NeedleSize) * scaleFactor, (candidate.Y + NeedleSize) * scaleFactor);
                         haystack.Draw(rect);
                     }
                 }
@@ -97,12 +98,11 @@ namespace MapStitcher
                     var x = joinPoint.X;
                     var y = joinPoint.Y;
 
-                    haystack.Crop((int)(x * magnification), (int)(y * magnification), (int)(NeedleSize * magnification), (int)(NeedleSize * magnification));
                     var rect = new Drawables()
                       .StrokeWidth(1)
                       .StrokeColor(searchResult.MeetsThreshold() ? new MagickColor("green") : new MagickColor("yellow"))
                       .FillOpacity(new Percentage(0))
-                      .Rectangle(x * magnification, y * magnification, (x + NeedleSize) * magnification, (y + NeedleSize) * magnification);
+                      .Rectangle(x * scaleFactor, y * scaleFactor, (x + NeedleSize) * scaleFactor, (y + NeedleSize) * scaleFactor);
                     haystack.Draw(rect);
                 }
                 var needle = NeedleImage.Clone();
@@ -112,7 +112,7 @@ namespace MapStitcher
         }
         private SortedList<double, Point> FindTemplateCandidates(IMagickImage searchArea, IMagickImage template, MagickGeometry bounds, IProgress<double> progress, double threshold, HashSet<Point> tried)
         {
-            Console.WriteLine("Searching an area {0}x{1} in {4}x{5} for {2}x{3}", bounds.Width, bounds.Height, template.Width, template.Height, searchArea.Width, searchArea.Height);
+            Console.WriteLine("Searching an area {0}x{1} in {4}x{5} for {2}x{3} at {6}x{7}", bounds.Width, bounds.Height, template.Width, template.Height, searchArea.Width, searchArea.Height, bounds.X, bounds.Y);
             var templatePixels = ToPixels(template);
             var searchPixels = ToPixels(searchArea);
 
@@ -158,7 +158,7 @@ namespace MapStitcher
                         var averageDistance = sumOfDistance / totalComparisons;
 
                         var variance = m2 / (count - 1);
-                        if (averageDistance <= threshold && Math.Abs(variance) < 100000)
+                        if (averageDistance <= threshold && variance < 100000)
                         {
                             candidates.Add(averageDistance, point);
                         }
@@ -223,12 +223,12 @@ namespace MapStitcher
             var oldHeight = searchArea.Height;
 
             var bounds = new MagickGeometry(0, 0, searchArea.Width, searchArea.Height);
-            var candidates = FindTemplateCandidates(searchArea, template, bounds, progress, 1000, new HashSet<Point>());
+            var candidates = FindTemplateCandidates(searchArea, template, bounds, progress, 2000, new HashSet<Point>());
 
             if (candidates.Any())
             {
                 var bestScore = candidates.First().Key;
-                this.initialCandidates = candidates.Where(x => x.Key < bestScore * 1.1).Select(x => {
+                this.initialCandidates = candidates.Where(x => x.Key < bestScore * 1.05).Select(x => {
                     return new Point(x.Value.X / magnification, x.Value.Y / magnification);
                 }).ToList();
             }
@@ -243,7 +243,7 @@ namespace MapStitcher
                 var threshold = 2000.0;
                 var bestSeen = threshold;
                 var bestScore = candidates.First().Key;
-                var toLoop = candidates.Where(x => x.Key < bestScore * 1.1);
+                var toLoop = candidates.Where(x => x.Key < bestScore * 1.05);
                 Console.WriteLine("Considering {0} candidates at {1}", toLoop.Count(), newMagnification);
 
                 IMagickImage newHaystack = null;
@@ -260,11 +260,10 @@ namespace MapStitcher
 
                 var cache = new HashSet<Point>();
 
-
                 foreach (var candidate in toLoop)
                 {
                     var point = new Point(candidate.Value.X / oldWidth * newHaystack.Width, candidate.Value.Y / oldHeight * newHaystack.Height);
-                    var margin = NeedleSize * newMagnification / 2;
+                    var margin = newPixelMagnification;
 
                     var clampedBounds = new MagickGeometry(
                         (int)(point.X - margin),

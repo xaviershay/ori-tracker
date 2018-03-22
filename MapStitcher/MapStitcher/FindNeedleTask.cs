@@ -62,7 +62,7 @@ namespace MapStitcher
             {
                 cached = false;
                 var image = state.Image(needle.Key).Clone();
-                var magnification = 0.2;
+                var magnification = 0.1;
                 image.Resize(new Percentage(magnification * 100));
 
                 var result = FindHighEntropyStrip(image, needle.Gravity, NeedleSize * magnification, this);
