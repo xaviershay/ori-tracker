@@ -8,6 +8,7 @@ import { Map, ImageOverlay, TileLayer, Polyline } from 'react-leaflet';
 import Leaflet from 'leaflet';
 import { withRouter, Route } from 'react-router';
 import { BrowserRouter, Link } from 'react-router-dom';
+import RasterCoords from 'leaflet-rastercoords';
 import uuid from 'uuid-encoded';
 
 firebase.initializeApp({
@@ -26,16 +27,20 @@ function point(x, y) {
 
 let swampTeleporter = point(493.719818, -74.31961);
 let gladesTeleporter = point(109.90181, -257.681549);
-let swampTeleporterOnMap = point(4523, 2867);
-let gladesTeleporterOnMap = point(3438, 3384);
+//let swampTeleporterOnMap = point(4523, 2867);
+//let gladesTeleporterOnMap = point(3438, 3384);
+
+// Pretty close, not exact
+let swampTeleporterOnMap = point(15215, 9576);
+let gladesTeleporterOnMap = point(11854, 11174);
 
 var map1 = gladesTeleporterOnMap;
 var map2 = swampTeleporterOnMap;
 var game1 = gladesTeleporter;
 var game2 = swampTeleporter;
 
-var mapRightSide = 5800;
-var mapBottomSide = 4240;
+var mapRightSide = 20480;
+var mapBottomSide = 14592;
 
 var gameLeftSide = game2.x - ((map2.x / (map2.x - map1.x)) * (game2.x - game1.x));
 var gameTopSide = game2.y - ((map2.y / (map2.y - map1.y)) * (game2.y - game1.y));
@@ -51,9 +56,50 @@ function distance(a, b) {
 }
 
 const mapCenter = [0, 0];
-const zoomLevel = 0;
+const zoomLevel = 5;
 const bounds = [[gameBottomSide, gameLeftSide], [gameTopSide, gameRightSide]];
 
+// Work-around for lines between tiles on fractional zoom levels
+// https://github.com/Leaflet/Leaflet/issues/3575
+(function(){
+    var originalInitTile = Leaflet.GridLayer.prototype._initTile
+    Leaflet.GridLayer.include({
+        _initTile: function (tile) {
+            originalInitTile.call(this, tile);
+
+            var tileSize = this.getTileSize();
+
+            tile.style.width = tileSize.x + 1 + 'px';
+            tile.style.height = tileSize.y + 1 + 'px';
+        }
+    });
+})()
+
+var h = mapBottomSide;
+var w = mapRightSide;
+var mapMaxZoom = 5;
+
+var rc = {
+  unproject: function() { return [0, 0] }
+}
+// Integrate leaflet-rastercoords per https://github.com/PaulLeCam/react-leaflet/issues/410
+class MapExtended extends Map {
+  createLeafletElement(props) {
+    let LeafletMapElement = super.createLeafletElement(props);
+    let img = [
+      w, // original width of image `karta.jpg`
+      h  // original height of image
+    ]
+
+    // assign map and image dimensions
+    rc = new RasterCoords(LeafletMapElement, img)
+
+    // set the view on a marker ...
+    LeafletMapElement.setView(rc.unproject([h / 2, w / 2]), 2)
+
+    return LeafletMapElement;
+  }
+}
 
 class MapView extends React.Component {
   constructor() {
@@ -83,10 +129,10 @@ class MapView extends React.Component {
             polyline = []
           } else if (distance(lastPos, data) > maxContinuous) {
             traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
-            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], [data.y, data.x]], opacity: teleportOpacity});
+            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], rc.unproject(toMapCoord([data.y, data.x]))], opacity: teleportOpacity});
             polyline = []
           }
-          polyline.push([data.y, data.x]);
+          polyline.push(rc.unproject(toMapCoord([data.y, data.x])));
           lastPos = data;
         })
         if (polyline.length > 0) {
@@ -97,13 +143,15 @@ class MapView extends React.Component {
       })
   }
 
+      /*<!--<ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />-->*/
   render() {
-    return <Map
-      crs={Leaflet.CRS.Simple} minZoom={-3} zoom={zoomLevel} center={mapCenter}
+    return <MapExtended
+      minZoom={0} maxZoom={7} zoom={zoomLevel} center={[0,0]}
     >
-      <ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />
+      <TileLayer url='/images/ori-map/{z}/{x}/{y}.png' noWrap='true'  />
+      <Polyline color="lime" positions={[rc.unproject([0,0]), rc.unproject([8000, 4000])]} />
       { this.state.traces.map((trace, idx) => <Polyline key={idx} color={trace.color} opacity={trace.opacity} positions={trace.line} />) }
-    </Map>
+    </MapExtended>
   }
 }
 
@@ -167,6 +215,24 @@ ReactDOM.render(
     document.getElementById('root')
 );
 registerServiceWorker();
+
+function toMapCoord(gameCoords) {
+    gameCoords = {x: gameCoords[1], y: gameCoords[0] }
+    var map1 = gladesTeleporterOnMap;
+    var map2 = swampTeleporterOnMap;
+    var game1 = gladesTeleporter;
+    var game2 = swampTeleporter;
+
+    var gameLeftSide = game2.x - ((map2.x / (map2.x - map1.x)) * (game2.x - game1.x));
+    var gameTopSide = game2.y - ((map2.y / (map2.y - map1.y)) * (game2.y - game1.y));
+
+    var scalex = (swampTeleporter.x - gladesTeleporter.x) / (swampTeleporterOnMap.x - gladesTeleporterOnMap.x);
+    var scaley = (swampTeleporter.y - gladesTeleporter.y) / (swampTeleporterOnMap.y - gladesTeleporterOnMap.y);
+    var mapx = (gameCoords.x - gameLeftSide) / scalex;
+    var mapy = (gameCoords.y - gameTopSide) / scaley;
+
+  return [mapx, mapy]; //point(mapx, mapy)
+}
 
 /*
 var Viewport = require('pixi-viewport')
