@@ -1,9 +1,13 @@
 Ori Tracker
 ===========
 
-Live traces of Ori runs. It uses a desktop component similar to the livesplit auto-splitter to capture Ori's position, then sends it to a remote server for plotting on a map.
+Live traces of Ori runs. It uses a desktop component similar to the livesplit
+auto-splitter to capture Ori's position, then sends it to a remote server for
+plotting on a map.
 
-Also included is a map stitcher to create the map from in-game screenshots. It doesn't work yet though.
+Also included is a map stitcher to create the map from in-game screenshots. It
+technically works, though has a lot of hard-coded nonsense and will require
+some hacking to get working on your machines.
 
 Development
 -----------
