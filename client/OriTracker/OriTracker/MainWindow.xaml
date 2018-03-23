@@ -22,9 +22,23 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <materialDesign:ColorZone Mode="PrimaryDark" Grid.Row="0">
-        <!--<materialDesign:ColorZone Mode="Accent" Grid.Row="0">-->
-            <Label Content="ORI DETECTED" VerticalAlignment="Top" HorizontalContentAlignment="Center"/>
+        <materialDesign:ColorZone Grid.Row="0">
+            <materialDesign:ColorZone.Resources>
+                <local:BoolToStringConverter x:Key="OriHookedConverter" FalseValue="ORI NOT DETECTED" TrueValue="ORI DETECTED" />
+            </materialDesign:ColorZone.Resources>
+            <materialDesign:ColorZone.Style>
+                <Style>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding OriHooked}" Value="true">
+                            <Setter Property="materialDesign:ColorZone.Mode" Value="PrimaryDark" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding OriHooked}" Value="false">
+                            <Setter Property="materialDesign:ColorZone.Mode" Value="Accent" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:ColorZone.Style>
+            <Label Content="{Binding OriHooked, Converter={StaticResource OriHookedConverter}}" VerticalAlignment="Top" HorizontalContentAlignment="Center" />
         </materialDesign:ColorZone>
 
         <Grid Margin="8 8 8 8" Grid.Row="1">

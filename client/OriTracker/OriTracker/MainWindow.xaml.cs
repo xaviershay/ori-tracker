@@ -21,11 +21,14 @@ namespace OriTracker
     public partial class MainWindow : Window
     {
         public int MaxPoints = 200;
+        private ViewModel Model;
 
         public MainWindow()
         {
             InitializeComponent();
 
+            Model = new ViewModel();
+            this.DataContext = Model;
             var empty = Enumerable.Range(0, MaxPoints).Select(_ => 0.0);
             latencies = new LinkedList<double>(empty);
             queueSize = new LinkedList<int>(empty.Select(x => (int)x));
