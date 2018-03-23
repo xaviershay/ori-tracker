@@ -50,13 +50,16 @@
                 <RowDefinition />
                 <RowDefinition />
                 <RowDefinition />
+                <RowDefinition />
             </Grid.RowDefinitions>
-            <Label Grid.Column="0" Grid.Row="0" Margin="0 0 8 0">Board URL</Label>
-            <TextBox Grid.Column="1" Grid.Row="0">https://ori-tracker.firebaseapp.com/board/a7KwE</TextBox>
-            <Label Grid.Column="0" Grid.Row="1" Margin="0 0 8 0">My ID</Label>
-            <TextBox Grid.Column="1" Grid.Row="1">xavier</TextBox>
-            <Label Grid.Column="0" Grid.Row="2" Margin="0 0 8 0">Enabled</Label>
-            <ToggleButton Grid.Column="1" Grid.Row="2" HorizontalAlignment="Right" Name="chkEnabled" IsChecked="True" />
+            <Label Grid.Column="0" Grid.Row="0" Margin="0 0 8 0">Tracker URL</Label>
+            <TextBox Grid.Column="1" Grid.Row="0" Text="{Binding TrackerUrl}" />
+            <Label Grid.Column="0" Grid.Row="1" Margin="0 0 8 0">ID</Label>
+            <TextBox Grid.Column="1" Grid.Row="1" Text="{Binding PlayerId}"/>
+            <Label Grid.Column="0" Grid.Row="2" Margin="0 0 8 0">Name</Label>
+            <TextBox Grid.Column="1" Grid.Row="2" Text="{Binding PlayerName}"/>
+            <Label Grid.Column="0" Grid.Row="3" Margin="0 0 8 0">Enabled</Label>
+            <ToggleButton Grid.Column="1" Grid.Row="3" HorizontalAlignment="Right" Name="chkEnabled" IsChecked="{Binding Enabled}" />
         </Grid>
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>

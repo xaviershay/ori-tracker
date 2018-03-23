@@ -28,6 +28,14 @@ namespace OriTracker
             InitializeComponent();
 
             Model = new ViewModel();
+            Model.Enabled = true;
+            Model.TrackerUrl = "https://example.com";
+
+            // TODO: Persist this locally
+            Guid guid = Guid.NewGuid();
+
+            Model.PlayerId = GuidEncoder.Encode(guid);
+            Model.PlayerName = "xavier";
             this.DataContext = Model;
             var empty = Enumerable.Range(0, MaxPoints).Select(_ => 0.0);
             latencies = new LinkedList<double>(empty);
