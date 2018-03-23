@@ -9,7 +9,6 @@ import { Map, ImageOverlay, TileLayer, Polyline } from 'react-leaflet';
 import Leaflet from 'leaflet';
 import { withRouter, Route } from 'react-router';
 import { BrowserRouter, Link } from 'react-router-dom';
-import RasterCoords from 'leaflet-rastercoords';
 import uuid from 'uuid-encoded';
 import { Button } from 'reactstrap';
 
@@ -27,8 +26,6 @@ function point(x, y) {
 
 let swampTeleporter = point(493.719818, -74.31961);
 let gladesTeleporter = point(109.90181, -257.681549);
-//let swampTeleporterOnMap = point(4523, 2867);
-//let gladesTeleporterOnMap = point(3438, 3384);
 
 // Pretty close, not exact
 let swampTeleporterOnMap = point(15215, 9576);
@@ -57,6 +54,7 @@ function distance(a, b) {
 
 const mapCenter = [0, 0];
 const zoomLevel = 3;
+const maxZoom = 7;
 const bounds = [[gameBottomSide, gameLeftSide], [gameTopSide, gameRightSide]];
 
 // Work-around for lines between tiles on fractional zoom levels
@@ -75,30 +73,23 @@ const bounds = [[gameBottomSide, gameLeftSide], [gameTopSide, gameRightSide]];
     });
 })()
 
+var leafletTileSize = 256;
+
+var gameTileSizeX = (2 ** maxZoom * leafletTileSize) / mapRightSide * (gameRightSide - gameLeftSide)
+var scaleX = leafletTileSize / gameTileSizeX
+
+var gameTileSizeY = (2 ** maxZoom * leafletTileSize) / mapBottomSide * (gameBottomSide - gameTopSide)
+var scaleY = leafletTileSize / gameTileSizeY
+
+var mapOriginX = (0 - gameLeftSide) / (game1.x - gameLeftSide) * map1.x / (2 ** maxZoom)
+var mapOriginY = (0 + gameTopSide) / (gameTopSide - game1.y) * map1.y / (2 ** maxZoom)
+
+Leaflet.CRS.MySimple = Leaflet.extend({}, Leaflet.CRS.Simple, {
+  transformation: new Leaflet.Transformation(scaleX, mapOriginX, scaleY, mapOriginY)
+});
+
 var h = mapBottomSide;
 var w = mapRightSide;
-
-var rc = {
-  unproject: function() { return [0, 0] }
-}
-// Integrate leaflet-rastercoords per https://github.com/PaulLeCam/react-leaflet/issues/410
-class MapExtended extends Map {
-  createLeafletElement(props) {
-    let LeafletMapElement = super.createLeafletElement(props);
-    let img = [
-      w, // original width of image `karta.jpg`
-      h  // original height of image
-    ]
-
-    // assign map and image dimensions
-    rc = new RasterCoords(LeafletMapElement, img)
-
-    // set the view on a marker ...
-    LeafletMapElement.setView(rc.unproject([h / 2, w / 2]), zoomLevel)
-
-    return LeafletMapElement;
-  }
-}
 
 class MapView extends React.Component {
   constructor() {
@@ -128,10 +119,10 @@ class MapView extends React.Component {
             polyline = []
           } else if (distance(lastPos, data) > maxContinuous) {
             traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
-            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], rc.unproject(toMapCoord([data.y, data.x]))], opacity: teleportOpacity});
+            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], [data.y, data.x]], opacity: teleportOpacity});
             polyline = []
           }
-          polyline.push(rc.unproject(toMapCoord([data.y, data.x])));
+          polyline.push([data.y, data.x]);
           lastPos = data;
         })
         if (polyline.length > 0) {
@@ -144,12 +135,13 @@ class MapView extends React.Component {
 
       /*<!--<ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />-->*/
   render() {
-    return <MapExtended
-      minZoom={0} maxZoom={7} center={[0,0]}
+    return <Map
+      minZoom={0} maxZoom={7} zoom={3} center={[0,0]}
+    crs={Leaflet.CRS.MySimple}
     >
       <TileLayer url='/images/ori-map/{z}/{x}/{y}.png' noWrap='true'  />
       { this.state.traces.map((trace, idx) => <Polyline key={idx} color={trace.color} opacity={trace.opacity} positions={trace.line} />) }
-    </MapExtended>
+    </Map>
   }
 }
 
