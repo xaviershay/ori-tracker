@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import './index.css';
+import './bootstrap.cyborg.min.css';
 import registerServiceWorker from './registerServiceWorker';
 import firebase from 'firebase'
 import firestore from '@firebase/firestore'
@@ -8,8 +9,8 @@ import { Map, ImageOverlay, TileLayer, Polyline } from 'react-leaflet';
 import Leaflet from 'leaflet';
 import { withRouter, Route } from 'react-router';
 import { BrowserRouter, Link } from 'react-router-dom';
-import RasterCoords from 'leaflet-rastercoords';
 import uuid from 'uuid-encoded';
+import { Button } from 'reactstrap';
 
 firebase.initializeApp({
   apiKey: 'AIzaSyBPza7LIiAnw0XZcoh9qJTjDXmI9q2El2U',
@@ -18,8 +19,6 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-const stamenTonerTiles = 'http://stamen-tiles-{s}.a.ssl.fastly.net/toner-background/{z}/{x}/{y}.png';
-const stamenTonerAttr = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 function point(x, y) {
   return {x: x, y: y};
@@ -27,8 +26,6 @@ function point(x, y) {
 
 let swampTeleporter = point(493.719818, -74.31961);
 let gladesTeleporter = point(109.90181, -257.681549);
-//let swampTeleporterOnMap = point(4523, 2867);
-//let gladesTeleporterOnMap = point(3438, 3384);
 
 // Pretty close, not exact
 let swampTeleporterOnMap = point(15215, 9576);
@@ -56,7 +53,8 @@ function distance(a, b) {
 }
 
 const mapCenter = [0, 0];
-const zoomLevel = 5;
+const zoomLevel = 3;
+const maxZoom = 7;
 const bounds = [[gameBottomSide, gameLeftSide], [gameTopSide, gameRightSide]];
 
 // Work-around for lines between tiles on fractional zoom levels
@@ -75,31 +73,23 @@ const bounds = [[gameBottomSide, gameLeftSide], [gameTopSide, gameRightSide]];
     });
 })()
 
+var leafletTileSize = 256;
+
+var gameTileSizeX = (2 ** maxZoom * leafletTileSize) / mapRightSide * (gameRightSide - gameLeftSide)
+var scaleX = leafletTileSize / gameTileSizeX
+
+var gameTileSizeY = (2 ** maxZoom * leafletTileSize) / mapBottomSide * (gameBottomSide - gameTopSide)
+var scaleY = leafletTileSize / gameTileSizeY
+
+var mapOriginX = (0 - gameLeftSide) / (game1.x - gameLeftSide) * map1.x / (2 ** maxZoom)
+var mapOriginY = (0 + gameTopSide) / (gameTopSide - game1.y) * map1.y / (2 ** maxZoom)
+
+Leaflet.CRS.MySimple = Leaflet.extend({}, Leaflet.CRS.Simple, {
+  transformation: new Leaflet.Transformation(scaleX, mapOriginX, scaleY, mapOriginY)
+});
+
 var h = mapBottomSide;
 var w = mapRightSide;
-var mapMaxZoom = 5;
-
-var rc = {
-  unproject: function() { return [0, 0] }
-}
-// Integrate leaflet-rastercoords per https://github.com/PaulLeCam/react-leaflet/issues/410
-class MapExtended extends Map {
-  createLeafletElement(props) {
-    let LeafletMapElement = super.createLeafletElement(props);
-    let img = [
-      w, // original width of image `karta.jpg`
-      h  // original height of image
-    ]
-
-    // assign map and image dimensions
-    rc = new RasterCoords(LeafletMapElement, img)
-
-    // set the view on a marker ...
-    LeafletMapElement.setView(rc.unproject([h / 2, w / 2]), 2)
-
-    return LeafletMapElement;
-  }
-}
 
 class MapView extends React.Component {
   constructor() {
@@ -129,10 +119,10 @@ class MapView extends React.Component {
             polyline = []
           } else if (distance(lastPos, data) > maxContinuous) {
             traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
-            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], rc.unproject(toMapCoord([data.y, data.x]))], opacity: teleportOpacity});
+            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], [data.y, data.x]], opacity: teleportOpacity});
             polyline = []
           }
-          polyline.push(rc.unproject(toMapCoord([data.y, data.x])));
+          polyline.push([data.y, data.x]);
           lastPos = data;
         })
         if (polyline.length > 0) {
@@ -145,22 +135,70 @@ class MapView extends React.Component {
 
       /*<!--<ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />-->*/
   render() {
-    return <MapExtended
-      minZoom={0} maxZoom={7} zoom={zoomLevel} center={[0,0]}
+    return <Map
+      minZoom={0} maxZoom={7} zoom={3} center={[0,0]}
+    crs={Leaflet.CRS.MySimple}
     >
       <TileLayer url='/images/ori-map/{z}/{x}/{y}.png' noWrap='true'  />
-      <Polyline color="lime" positions={[rc.unproject([0,0]), rc.unproject([8000, 4000])]} />
       { this.state.traces.map((trace, idx) => <Polyline key={idx} color={trace.color} opacity={trace.opacity} positions={trace.line} />) }
-    </MapExtended>
+    </Map>
   }
+}
+
+function trackerUrl(data) {
+  var host = "";
+  if (window.location.hostname == "localhost") {
+    host = "http://localhost:5000/ori-tracker/us-central1"
+  } else {
+    host = "TODO"
+  }
+  return host + "/track?board_id=" + data.publicId
+}
+
+function viewerUrl(data) {
+  var location = window.location;
+  return location.protocol + "//" + location.host + "/map/" + data.publicId
 }
 
 const Board = ({match}) => {
   return (
-      <div>
-        Board {match.params.publicId}
+    <div className="board-container">
+      <p/>
+       <div className="container">
+          <div className="form-group row">
+            <label htmlFor="tracker-url-input" className="col-sm-2 col-form-label">Tracker URL</label>
+            <div className="col-sm-10">
+              <input type="text" readOnly={true} id="tracker-url-input" value={trackerUrl(match.params)} className="form-control" />
+              <p className="hint">Paste this URL into the Tracker field of all clients who should be reporting to this map.</p>
+            </div>
+          </div>
+          <div className="form-group row">
+            <label htmlFor="viewer-url-input" className="col-sm-2 col-form-label">Viewer URL</label>
+            <div className="col-sm-10">
+              <input type="text" readOnly={true} id="viewer-url-input" value={viewerUrl(match.params)} className="form-control" />
+              <p className="hint">Share with friends so they can watch, but won't be able to contribute.</p>
+            </div>
+          </div>
+        </div>
         <MapView />
       </div>
+  )
+}
+
+const Header = () => {
+  return(
+    <header>
+      <div className="navbar navbar-dark bg-dark box-shadow">
+        <div className="container d-flex justify-content-between">
+          <a href="/" className="navbar-brand d-flex align-items-center">
+            <strong>Ori Tracker</strong>
+          </a>
+          <button className="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarHeader" aria-controls="navbarHeader" aria-expanded="false" aria-label="Toggle navigation">
+            <span className="navbar-toggler-icon"></span>
+          </button>
+        </div>
+      </div>
+    </header>
   )
 }
 
@@ -179,13 +217,21 @@ class MainPage extends React.Component {
 
   render() {
     return(
-      <div>
-        <button onClick={() => this.newBoard(this.props.history)}>New board</button>
-      </div>
+      <section className='jumbotron text-center'>
+        <div className='container text-center'>
+          <h1 className='jumbotron-heading'>Ori Tracker</h1>
+          <p className='lead text-muted'>Track you and your friends' Ori and the Blind Forest movement on a shared realtime map.</p>
+          <p>
+            <a href='#' className='btn btn-primary my-2'>Download Client</a>&nbsp;
+            <a href='#' onClick={() => this.newBoard(this.props.history)} className='btn btn-primary my-2'>New Map</a>
+          </p>
+        </div>
+      </section>
     )
   }
 }
 
+/*
 class Game extends React.Component {
   constructor(props) {
     super(props)
@@ -207,10 +253,21 @@ class Game extends React.Component {
     );
   }
 }
+*/
 
+/*
+        <main role="main">
+          <Route path='/' component={MainPage} />
+          <Route path="/map/:publicId" component={Board} />
+        </main>
+        */
 ReactDOM.render(
     <BrowserRouter>
-      <Game />
+    <div id="app">
+        <Header />
+        <Route path='/' exact={true} component={MainPage} />
+        <Route path="/map/:publicId" component={Board} />
+    </div>
     </BrowserRouter>,
     document.getElementById('root')
 );
