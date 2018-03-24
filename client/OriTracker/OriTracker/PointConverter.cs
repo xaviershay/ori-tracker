@@ -1,23 +1,29 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Collections.ObjectModel;
 using System.Windows.Media;
 using System.Windows;
-using System.ComponentModel;
 
 namespace OriTracker
 {
-    class PointConverter : IValueConverter
+    class PointConverter : DependencyObject, IValueConverter
     {
+        public static readonly DependencyProperty StepProperty = 
+            DependencyProperty.Register(
+            "Step", typeof(double),
+            typeof(PointConverter)
+            );
+        public double Step
+        {
+            get { return (double)GetValue(StepProperty); }
+            set { SetValue(StepProperty, value); }
+        }
+
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             var data = (ObservableCollection<double>)value;
-            var step = System.Convert.ToDouble(parameter);
 
             var dmargin = 0.0;
             int MaxPoints = 200; // TODO: De-dupe this
@@ -32,7 +38,7 @@ namespace OriTracker
             double wxmin = 0.0;
             double wxmax = MaxPoints;
             double wymin = 0;
-            double wymax = Math.Ceiling(data.Max() / step) * step;
+            double wymax = Math.Ceiling(data.Max() / Step) * Step;
 
             var matrix = Matrix.Identity;
             matrix.Translate(-wxmin, -wymin);

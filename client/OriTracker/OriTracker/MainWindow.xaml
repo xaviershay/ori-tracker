@@ -19,6 +19,7 @@
         <Grid.Resources>
             <local:BoolToStringConverter x:Key="OriHookedConverter" FalseValue="ORI NOT DETECTED" TrueValue="ORI DETECTED" />
             <local:BoolToStringConverter x:Key="OriHookedColorConverter" FalseValue="Accent" TrueValue="PrimaryDark" />
+            <local:ScaleConverter x:Key="ScaleConverter" />
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -57,24 +58,23 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Label Grid.Column="0" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource PrimaryHueLightBrush}">
-                20
-            </Label>
+            <Label Grid.Column="0" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource PrimaryHueLightBrush}" Content="{Binding MaxQueueSizesStep}"/>
             <Viewbox Grid.Column="1" Margin="8 0 8 0" Stretch="Fill">
                 <Canvas Name="MetricsGraph" ClipToBounds="True" Height="100" Width="100">
                     <Canvas.Resources>
-                        <local:PointConverter x:Key="PointConverter" />
+                        <local:PointConverter x:Key="LatenciesConverter" Step="0.2" />
+                        <local:PointConverter x:Key="QueueSizesConverter" Step="20"/>
                     </Canvas.Resources>
                     <Canvas.LayoutTransform>
                         <ScaleTransform ScaleX="1" ScaleY="-1" CenterX=".5" CenterY=".5" />
                     </Canvas.LayoutTransform>
-                    <Polyline StrokeThickness="0.5" Stroke="{StaticResource SecondaryAccentBrush}" Points="{Binding Latencies, Converter={StaticResource PointConverter}, ConverterParameter=0.2}"/>
-                    <Polyline StrokeThickness="0.5" Stroke="{StaticResource PrimaryHueLightBrush}" Points="{Binding QueueSizes, Converter={StaticResource PointConverter}, ConverterParameter=20}"/>
+                    <Polyline StrokeThickness="0.5" Stroke="{StaticResource SecondaryAccentBrush}" Points="{Binding Latencies, Converter={StaticResource LatenciesConverter}}"/>
+                    <Polyline StrokeThickness="0.5" Stroke="{StaticResource PrimaryHueLightBrush}" Points="{Binding QueueSizes, Converter={StaticResource QueueSizesConverter}}"/>
                 </Canvas>
             </Viewbox>
-            <Label Grid.Column="2" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource SecondaryAccentBrush}">
-                200ms
-            </Label>
+            <Label Grid.Column="2" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource SecondaryAccentBrush}"
+                   Content="{Binding MaxLatencyStep, Converter={StaticResource ScaleConverter}, ConverterParameter=1000}"
+                   ContentStringFormat="{}{0:N0} ms"/>
         </Grid>
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center">
             <Label Foreground="{DynamicResource PrimaryHueLightBrush}" FontSize="{StaticResource GraphLegendFontSize}">Queue Size</Label>

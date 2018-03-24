@@ -63,6 +63,7 @@
     <Compile Include="BooleanToValueConverters.cs" />
     <Compile Include="GuidEncoder.cs" />
     <Compile Include="PointConverter.cs" />
+    <Compile Include="ScaleConverter.cs" />
     <Compile Include="ViewModel.cs" />
     <Page Include="Styles.xaml">
       <SubType>Designer</SubType>
