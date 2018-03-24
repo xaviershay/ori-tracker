@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -6,8 +7,13 @@ namespace OriTracker
 {
     internal class ViewModel : INotifyPropertyChanged
     {
-        private bool oriHooked;
+        public ViewModel()
+        {
+            Latencies = new ObservableCollection<double>();
+            QueueSizes = new ObservableCollection<double>();
+        }
 
+        private bool oriHooked;
         public bool OriHooked
         {
             get => oriHooked;
@@ -15,7 +21,6 @@ namespace OriTracker
         }
 
         private bool enabled;
-
         public bool Enabled
         {
             get => enabled;
@@ -23,7 +28,6 @@ namespace OriTracker
         }
 
         private string trackerUrl;
-
         public string TrackerUrl
         {
             get => trackerUrl;
@@ -31,7 +35,6 @@ namespace OriTracker
         }
 
         private string playerId;
-
         public string PlayerId
         {
             get => playerId;
@@ -39,16 +42,41 @@ namespace OriTracker
         }
 
         private string playerName;
-
         public string PlayerName
         {
             get => playerName;
             set => SetField(ref playerName, value);
         }
 
+        private ObservableCollection<double> latencies;
+        public ObservableCollection<double> Latencies
+        {
+            get => latencies;
+            set {
+                if (latencies != value)
+                {
+                    value.CollectionChanged += (sender, e) => NotifyPropertyChanged();
+                }
+                SetField(ref latencies, value);
+            }
+        }
+
+        private ObservableCollection<double> queueSizes;
+        public ObservableCollection<double> QueueSizes
+        {
+            get => queueSizes;
+            set {
+                if (queueSizes != value)
+                {
+                    value.CollectionChanged += (sender, e) => NotifyPropertyChanged();
+                }
+                SetField(ref queueSizes, value);
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected virtual void NotifyPropertyChanged(string propName)
+        protected virtual void NotifyPropertyChanged([CallerMemberName]string propName = null)
         {
             if (this.PropertyChanged != null)
                 PropertyChanged(this, new PropertyChangedEventArgs(propName));

@@ -11,10 +11,15 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:diag="clr-namespace:System.Diagnostics;assembly=WindowsBase"
         xmlns:local="clr-namespace:OriTracker"
         mc:Ignorable="d"
-        Title="Ori Tracker" Height="231.894" Width="409.701" SizeChanged="Window_SizeChanged" Icon="ori_logo.png">
+        Title="Ori Tracker" Height="300" Width="400" Icon="ori_logo.png">
     <Grid>
+        <Grid.Resources>
+            <local:BoolToStringConverter x:Key="OriHookedConverter" FalseValue="ORI NOT DETECTED" TrueValue="ORI DETECTED" />
+            <local:BoolToStringConverter x:Key="OriHookedColorConverter" FalseValue="Accent" TrueValue="PrimaryDark" />
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -22,22 +27,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <materialDesign:ColorZone Grid.Row="0">
-            <materialDesign:ColorZone.Resources>
-                <local:BoolToStringConverter x:Key="OriHookedConverter" FalseValue="ORI NOT DETECTED" TrueValue="ORI DETECTED" />
-            </materialDesign:ColorZone.Resources>
-            <materialDesign:ColorZone.Style>
-                <Style>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding OriHooked}" Value="true">
-                            <Setter Property="materialDesign:ColorZone.Mode" Value="PrimaryDark" />
-                        </DataTrigger>
-                        <DataTrigger Binding="{Binding OriHooked}" Value="false">
-                            <Setter Property="materialDesign:ColorZone.Mode" Value="Accent" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </materialDesign:ColorZone.Style>
+        <materialDesign:ColorZone Grid.Row="0" Mode="{Binding OriHooked, Converter={StaticResource OriHookedColorConverter}}">
             <Label Content="{Binding OriHooked, Converter={StaticResource OriHookedConverter}}" VerticalAlignment="Top" HorizontalContentAlignment="Center" />
         </materialDesign:ColorZone>
 
@@ -70,11 +60,18 @@
             <Label Grid.Column="0" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource PrimaryHueLightBrush}">
                 20
             </Label>
-            <Canvas Grid.Column="1" Name="MetricsGraph" ClipToBounds="True" Margin="8 0 8 0" HorizontalAlignment="Stretch">
-                <Canvas.LayoutTransform>
-                    <ScaleTransform ScaleX="1" ScaleY="-1" CenterX=".5" CenterY=".5" />
-                </Canvas.LayoutTransform>
-            </Canvas>
+            <Viewbox Grid.Column="1" Margin="8 0 8 0" Stretch="Fill">
+                <Canvas Name="MetricsGraph" ClipToBounds="True" Height="100" Width="100">
+                    <Canvas.Resources>
+                        <local:PointConverter x:Key="PointConverter" />
+                    </Canvas.Resources>
+                    <Canvas.LayoutTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="-1" CenterX=".5" CenterY=".5" />
+                    </Canvas.LayoutTransform>
+                    <Polyline StrokeThickness="0.5" Stroke="{StaticResource SecondaryAccentBrush}" Points="{Binding Latencies, Converter={StaticResource PointConverter}, ConverterParameter=0.2}"/>
+                    <Polyline StrokeThickness="0.5" Stroke="{StaticResource PrimaryHueLightBrush}" Points="{Binding QueueSizes, Converter={StaticResource PointConverter}, ConverterParameter=20}"/>
+                </Canvas>
+            </Viewbox>
             <Label Grid.Column="2" FontSize="{StaticResource GraphLegendFontSize}" Foreground="{DynamicResource SecondaryAccentBrush}">
                 200ms
             </Label>
