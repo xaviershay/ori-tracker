@@ -94,65 +94,81 @@ var w = mapRightSide;
 class MapView extends React.Component {
   constructor() {
     super()
-    this.state = {traces: []}
+    this.state = {traces: {}}
   }
   componentWillMount() {
     var me = this;
+    var boardId = this.props.boardId;
+
     db
-      .collection('boards/abc123/players/xavier/traces')
+      .collection('boards/' + boardId + '/players')
       .onSnapshot(function(snapshot) {
-        var maxContinuous = 50; // TODO: Figure out what makes sense here
-        var polyline = []
-        var traces = []
-        var lastPos = null;
-        var teleportColor = "lime";
-        var teleportOpacity = 0.5;
-        var traceColor = "red";
-        var traceOpacity = 0.7;
-        snapshot.forEach(function(doc) {
-          var data = doc.data();
-          if (lastPos == null || data.start) {
+        snapshot.forEach((playerDoc) => {
+          var playerId = playerDoc.id;
+          var playerName = playerDoc.data().name;
+          playerDoc.ref.collection('traces').onSnapshot((snapshot) => {
+            var maxContinuous = 50; // TODO: Figure out what makes sense here
+            var polyline = []
+            var traces = []
+            var lastPos = null;
+            var teleportColor = "red";
+            var teleportOpacity = 0.3;
+            var traceColor = "red";
+            var traceOpacity = 0.7;
+            snapshot.forEach(function(doc) {
+              var data = doc.data();
+              if (lastPos == null || data.start) {
+                if (polyline.length > 0) {
+                  traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
+                }
+
+                polyline = []
+              } else if (distance(lastPos, data) > maxContinuous) {
+                traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
+                traces.push({color: teleportColor, line: [polyline[polyline.length - 1], [data.y, data.x]], opacity: teleportOpacity});
+                polyline = []
+              }
+              polyline.push([data.y, data.x]);
+              lastPos = data;
+            })
             if (polyline.length > 0) {
               traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
             }
 
-            polyline = []
-          } else if (distance(lastPos, data) > maxContinuous) {
-            traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
-            traces.push({color: teleportColor, line: [polyline[polyline.length - 1], [data.y, data.x]], opacity: teleportOpacity});
-            polyline = []
-          }
-          polyline.push([data.y, data.x]);
-          lastPos = data;
-        })
-        if (polyline.length > 0) {
-          traces.push({color: traceColor, line: polyline, opacity: traceOpacity})
-        }
+            var newTraces = me.state.traces;
+            newTraces[playerId] = traces;
 
-        me.setState({traces: traces})
-      })
+
+            me.setState({traces: newTraces})
+          });
+        })
+      });
   }
 
-      /*<!--<ImageOverlay url='/images/ori-map.jpg' bounds={ bounds } />-->*/
   render() {
     return <Map
       minZoom={0} maxZoom={7} zoom={3} center={[0,0]}
     crs={Leaflet.CRS.MySimple}
     >
       <TileLayer url='/images/ori-map/{z}/{x}/{y}.png' noWrap='true'  />
-      { this.state.traces.map((trace, idx) => <Polyline key={idx} color={trace.color} opacity={trace.opacity} positions={trace.line} />) }
+      { Object.keys(this.state.traces).map((playerId, idx) => {
+          var traces = this.state.traces[playerId];
+          return traces.map((trace, idx2) => <Polyline key={idx + "-" + idx2} color={trace.color} opacity={trace.opacity} positions={trace.line} />)
+        })
+      }
     </Map>
   }
 }
 
 function trackerUrl(data) {
   var host = "";
-  if (window.location.hostname == "localhost") {
-    host = "http://localhost:5000/ori-tracker/us-central1"
+  var location = window.location;
+  if (location.hostname == "ori-tracker.firebaseapp.com") {
+    host = "https://ori-tracker.cloudfunctions.net/us-central1"
   } else {
-    host = "TODO"
+    host = location.protocol + "//" + location.hostname + ":5000/ori-tracker/us-central1"
   }
-  return host + "/track?board_id=" + data.publicId
+  return host + "/track/" + data.publicId
 }
 
 function viewerUrl(data) {
@@ -180,7 +196,7 @@ const Board = ({match}) => {
             </div>
           </div>
         </div>
-        <MapView />
+        <MapView boardId={match.params.publicId} />
       </div>
   )
 }

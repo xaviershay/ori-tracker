@@ -1,22 +1,24 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const app = require('express')();
+const crypto = require('crypto');
 
 admin.initializeApp(functions.config().firebase);
 var db = admin.firestore()
 
-// // Create and Deploy Your First Cloud Functions
-// // https://firebase.google.com/docs/functions/write-firebase-functions
-//
-exports.helloWorld = functions.https.onRequest((request, response) => {
-  response.send("Hello from Firebase!");
-});
-
-// TODO: Validate data
-exports.track = functions.https.onRequest((req, response) => {
+app.post("/:board_id", (req, res) => {
   var batch = db.batch();
-  req.body.forEach(function(x) {
-    var board = req.query.board_id
-    var player = req.query.player_id
+  var board = req.params.board_id
+  var data = req.body;
+  var player = data.playerId;
+  var playerName = data.playerName;
+  var playerHash = crypto.createHmac('sha256', player)
+                     .digest('hex');
+
+  var playerPath = "boards/" + board + "/players/" + playerHash
+  batch.set(db.doc(playerPath), {name: playerName})
+
+  data.events.forEach(function(x) {
     var id = x.timestamp
     var doc = {
       x: x.x,
@@ -24,12 +26,14 @@ exports.track = functions.https.onRequest((req, response) => {
       start: x.start
     }
 
-    var path = "boards/" + board + "/players/" + player + "/traces/" + id
+    var path = playerPath + "/traces/" + id
 
     batch.set(db.doc(path), doc);
   })
 
   return batch.commit().then(function() {
-    return response.send("Ok");
+    return res.send("Ok");
   })
 });
+
+exports.track = functions.https.onRequest(app);
