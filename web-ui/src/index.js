@@ -197,12 +197,18 @@ class PolyDesigner extends React.Component {
         </Map>
       </div>
       <div className='col-sm-2'>
-        <select style={{width: '100%'}} id='areaSelector' size="10" value={this.state.selectedArea} onChange={this.handleChange}>
+        <select style={{width: '100%'}} id='areaSelector' size="20" value={this.state.selectedArea} onChange={this.handleChange}>
           { Object.keys(this.state.areas).sort().map((area) => <option key={area}>{area}</option> ) }
         </select>
       <br />
         <button onClick={this.clearArea}>Clear Area</button>
         <button onClick={this.clearLastPoint}>Clear Last Point</button>
+      <p />
+      <ul>
+        <li>Select an area to modify, either by clicking an existing shape on the map or selecting it from the list above.</li>
+        <li>Click on map to add points to the shape. <i>Clear Area</i> button to reset, or <i>Clear Last Point</i> to undo the last point added to the shape.</li>
+        <li>Progress is saved automatically.</li>
+      </ul>
       </div>
     </div>
   }
