@@ -5,7 +5,7 @@ import './bootstrap.cyborg.min.css';
 import registerServiceWorker from './registerServiceWorker';
 import firebase from 'firebase'
 import firestore from '@firebase/firestore'
-import { Map, ImageOverlay, TileLayer, Polyline } from 'react-leaflet';
+import { Map, ImageOverlay, TileLayer, Polyline, Polygon } from 'react-leaflet';
 import Leaflet from 'leaflet';
 import { withRouter, Route } from 'react-router';
 import { BrowserRouter, Link } from 'react-router-dom';
@@ -90,6 +90,123 @@ Leaflet.CRS.MySimple = Leaflet.extend({}, Leaflet.CRS.Simple, {
 
 var h = mapBottomSide;
 var w = mapRightSide;
+
+class PolyDesigner extends React.Component {
+  constructor() {
+    super()
+    console.log("Constructor")
+    this.state = {
+      selectedArea: '',
+      areas: {}
+    }
+    this.handleChange = this.handleChange.bind(this);
+    this.clearArea = this.clearArea.bind(this);
+    this.clearLastPoint = this.clearLastPoint.bind(this);
+    this.selectPoly = this.selectPoly.bind(this);
+  }
+
+  componentWillMount() {
+    var me = this;
+
+    db
+      .doc('randoAreas/primary')
+      .onSnapshot(function(snapshot) {
+        var data = snapshot.data();
+        if (!data) {
+          alert("Data is not present! A dev needs to re-bootstrap.")
+        }
+        me.setState({areas: data})
+        if (!data[me.state.selectedArea]) {
+          me.setState({selectedArea: Object.keys(data)[0]})
+        }
+      })
+  }
+
+  updateDatabase(areas) {
+    db
+      .doc('randoAreas/primary')
+      .set(areas)
+  }
+
+  addPoint(point) {
+    // This is a hack to swallow events from selecting a polygon, since in
+    // react we can't stop propagation of events.
+    if (!this.handledClickEvent) {
+      var state = this.state;
+      var areas = state.areas;
+      var existingPositions = areas[state.selectedArea]
+
+      if (existingPositions) {
+        areas[state.selectedArea].push({lat: point.lat, lng: point.lng})
+      }
+
+      this.updateDatabase(areas);
+    }
+    this.handledClickEvent = false;
+  }
+
+  clearArea(e) {
+    var state = this.state;
+    var areas = state.areas;
+    var existingPositions = areas[state.selectedArea]
+
+    if (existingPositions) {
+      areas[state.selectedArea] = []
+    }
+
+    this.updateDatabase(areas);
+  }
+
+  clearLastPoint(e) {
+    var state = this.state;
+    var areas = state.areas;
+    var existingPositions = areas[state.selectedArea]
+
+    if (existingPositions) {
+      existingPositions.pop();
+      areas[state.selectedArea] = existingPositions
+    }
+
+    this.updateDatabase(areas);
+  }
+
+  selectPoly(e, area) {
+    this.handledClickEvent = true;
+    this.setState({selectedArea: area})
+    return false;
+  }
+
+  handleChange(event) {
+    this.setState({selectedArea: event.target.value});
+  }
+
+  render() {
+    return <div className='row map-container'>
+      <div className='col-sm-10 map-container-immediate-parent'>
+        <Map
+          minZoom={0} maxZoom={7} zoom={3} center={[0,0]}
+          crs={Leaflet.CRS.MySimple}
+          onclick={(e) => this.addPoint(e.latlng) }
+        >
+          <TileLayer url='/images/ori-map/{z}/{x}/{y}.png' noWrap='true'  />
+
+          { Object.keys(this.state.areas).map((area) =>
+
+            <Polygon onClick={(e) => this.selectPoly(e, area)} color={this.state.selectedArea == area ? "green" : "blue"} key={area} positions={this.state.areas[area]} />
+          )}
+        </Map>
+      </div>
+      <div className='col-sm-2'>
+        <select style={{width: '100%'}} id='areaSelector' size="10" value={this.state.selectedArea} onChange={this.handleChange}>
+          { Object.keys(this.state.areas).sort().map((area) => <option key={area}>{area}</option> ) }
+        </select>
+      <br />
+        <button onClick={this.clearArea}>Clear Area</button>
+        <button onClick={this.clearLastPoint}>Clear Last Point</button>
+      </div>
+    </div>
+  }
+}
 
 class MapView extends React.Component {
   constructor() {
@@ -283,6 +400,7 @@ ReactDOM.render(
         <Header />
         <Route path='/' exact={true} component={MainPage} />
         <Route path="/map/:publicId" component={Board} />
+        <Route path="/designer" component={PolyDesigner} />
     </div>
     </BrowserRouter>,
     document.getElementById('root')

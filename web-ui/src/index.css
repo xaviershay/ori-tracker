@@ -4,11 +4,11 @@ html, body {
   margin: 0;
 }
 
-body, #root, #app {
+body, #root, #app, .map-container, .map-container-immediate-parent {
   height: 100%;
 }
 
-#app {
+#app, .map-container-immediate-parent {
   display: flex;
   flex-direction: column;
 }
