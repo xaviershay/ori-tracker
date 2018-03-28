@@ -129,10 +129,9 @@ class PolyDesigner extends React.Component {
   }
 
   addPoint(point) {
-    // This is a hack to swallow events from selecting a polygon, since in
-    // react we can't stop propagation of events.
+    var state = this.state;
+
     if (!this.handledClickEvent) {
-      var state = this.state;
       var areas = state.areas;
       var existingPositions = areas[state.selectedArea]
 
@@ -171,9 +170,10 @@ class PolyDesigner extends React.Component {
   }
 
   selectPoly(e, area) {
-    this.handledClickEvent = true;
-    this.setState({selectedArea: area})
-    return false;
+    if (area != this.state.selectedArea) {
+      this.handledClickEvent = true;
+      this.setState({selectedArea: area})
+    }
   }
 
   handleChange(event) {
