@@ -103,6 +103,7 @@ class PolyDesigner extends React.Component {
     this.clearArea = this.clearArea.bind(this);
     this.clearLastPoint = this.clearLastPoint.bind(this);
     this.selectPoly = this.selectPoly.bind(this);
+    this.mouseMove = this.mouseMove.bind(this);
   }
 
   componentWillMount() {
@@ -114,6 +115,7 @@ class PolyDesigner extends React.Component {
         var data = snapshot.data();
         if (!data) {
           alert("Data is not present! A dev needs to re-bootstrap.")
+          data = {}
         }
         me.setState({areas: data})
         if (!data[me.state.selectedArea]) {
@@ -180,6 +182,13 @@ class PolyDesigner extends React.Component {
     this.setState({selectedArea: event.target.value});
   }
 
+  mouseMove(event) {
+    var round = (x) => Math.round(x * 100) / 100;
+    this.setState({
+      currentMouseLocation: round(event.latlng.lat) + ", " + round(event.latlng.lng)
+    });
+  }
+
   render() {
     return <div className='row map-container'>
       <div className='col-sm-10 map-container-immediate-parent'>
@@ -187,6 +196,7 @@ class PolyDesigner extends React.Component {
           minZoom={0} maxZoom={7} zoom={3} center={[0,0]}
           crs={Leaflet.CRS.MySimple}
           onclick={(e) => this.addPoint(e.latlng) }
+          onmousemove={this.mouseMove}
         >
           <TileLayer url='/images/ori-map/{z}/{x}/{y}.png' noWrap='true'  />
 
@@ -204,6 +214,7 @@ class PolyDesigner extends React.Component {
         <button onClick={this.clearArea}>Clear Area</button>
         <button onClick={this.clearLastPoint}>Clear Last Point</button>
       <p />
+      <p>Mouse location: <span>{this.state.currentMouseLocation}</span></p>
       <ul>
         <li>Select an area to modify, either by clicking an existing shape on the map or selecting it from the list above.</li>
         <li>Click on map to add points to the shape. <i>Clear Area</i> button to reset, or <i>Clear Last Point</i> to undo the last point added to the shape.</li>
