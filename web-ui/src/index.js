@@ -94,7 +94,6 @@ var w = mapRightSide;
 class PolyDesigner extends React.Component {
   constructor() {
     super()
-    console.log("Constructor")
     this.state = {
       selectedArea: '',
       areas: {}
@@ -110,24 +109,29 @@ class PolyDesigner extends React.Component {
     var me = this;
 
     db
-      .doc('randoAreas/primary')
+      .collection('randoAreas')
       .onSnapshot(function(snapshot) {
-        var data = snapshot.data();
-        if (!data) {
-          alert("Data is not present! A dev needs to re-bootstrap.")
-          data = {}
-        }
-        me.setState({areas: data})
-        if (!data[me.state.selectedArea]) {
-          me.setState({selectedArea: Object.keys(data)[0]})
+        var areas = {};
+
+        snapshot.forEach(function(doc) {
+          var data = doc.data();
+          if (!data.points) {
+            console.log("No points data for " + doc.ref.id);
+          } else {
+            areas[doc.ref.id] = data.points
+          }
+        });
+        me.setState({areas: areas})
+        if (!areas[me.state.selectedArea]) {
+          me.setState({selectedArea: Object.keys(areas)[0]})
         }
       })
   }
 
-  updateDatabase(areas) {
+  updateDatabase(area, data) {
     db
-      .doc('randoAreas/primary')
-      .set(areas)
+      .doc('randoAreas/' + area)
+      .set({"points": data})
   }
 
   addPoint(point) {
@@ -141,7 +145,7 @@ class PolyDesigner extends React.Component {
         areas[state.selectedArea].push({lat: point.lat, lng: point.lng})
       }
 
-      this.updateDatabase(areas);
+      this.updateDatabase(state.selectedArea, areas[state.selectedArea]);
     }
     this.handledClickEvent = false;
   }
@@ -155,7 +159,7 @@ class PolyDesigner extends React.Component {
       areas[state.selectedArea] = []
     }
 
-    this.updateDatabase(areas);
+    this.updateDatabase(state.selectedArea, areas[state.selectedArea]);
   }
 
   clearLastPoint(e) {
@@ -168,7 +172,7 @@ class PolyDesigner extends React.Component {
       areas[state.selectedArea] = existingPositions
     }
 
-    this.updateDatabase(areas);
+    this.updateDatabase(state.selectedArea, areas[state.selectedArea]);
   }
 
   selectPoly(e, area) {
